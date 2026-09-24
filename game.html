@@ -1,0 +1,1737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Follow Debbie — Interactive Story</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    background: #0b0c10;
+    overflow: hidden;
+    font-family: "Segoe UI", "Helvetica Neue", Arial, system-ui, sans-serif;
+    user-select: none;
+  }
+  :root { --accent: #d9a45b; --accent-soft: rgba(217,164,91,.5); }
+
+  /* ===== 16:9 stage ===== */
+  #stage {
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 1280px; height: 720px;
+    transform: translate(-50%, -50%);
+    transform-origin: center;
+    overflow: hidden;
+    background: #000;
+    cursor: pointer;
+  }
+
+  /* ===== Background ===== */
+  #bg {
+    position: absolute; inset: 0;
+    background: url("assets/subway-bg.png") center/cover no-repeat;
+    transition: opacity .5s ease, filter .5s ease;
+  }
+  body.phone-mode #bg { filter: brightness(.45) blur(2px); }
+
+  /* Scene I: day→night crossfade layer (sits right above #bg, below sprites/HUD) */
+  #bg-night {
+    position: absolute; inset: 0;
+    background: center/cover no-repeat;
+    opacity: 0; pointer-events: none;
+    transition: opacity 2.6s ease;
+  }
+  #bg-night.on { opacity: 1; }
+
+  /* ===== Character sprite ===== */
+  .sprite {
+    position: absolute;
+    bottom: 0; left: 50%;
+    transform: translateX(-50%);
+    height: 92%;
+    filter: drop-shadow(0 10px 26px rgba(0,0,0,.5));
+    transition: opacity .45s ease;
+    pointer-events: none;
+  }
+  .sprite.hidden { opacity: 0; transition: none; }   /* hide instantly — no ghost outline during bg switch */
+  body.sprite-left .sprite { left: 27%; }
+  /* wide shots (street exterior): Debbie smaller so she stays proportional to the store */
+  body.sprite-left.sprite-far .sprite { height: 62%; left: 26%; }
+
+  /* ===== Act 2 (Milo scenes): two-character stage — Milo left, Debbie right ===== */
+  body.act2 #spDeb2 { left: 74%; }
+  body.act2 #spMilo { left: 27%; }
+  #spMilo.h-low { height: 58%; }
+  #spMilo.h-mid { height: 70%; }
+  #spDuo { height: 96%; max-width: 90%; object-fit: contain; transform: translateX(-50%) scaleX(-1); }
+  body.dir .sprite:not(.hidden) { opacity: 1; }   /* stage directions keep the actors on screen */
+  body.dir #text { text-align: center; color: #e8e2d5; }
+  body.fb #bg { filter: brightness(1.06) saturate(1.04); }
+  #nametag.mt-milo { border-color: rgba(140,180,220,.45); border-left-color: #8fb7d8; color: #d9e8f5; }
+  #nametag.mt-milo::before { color: #8fb7d8; }
+  #nametag.mt-woman { border-color: rgba(216,168,192,.45); border-left-color: #d8a8c0; color: #f2dfe9; }
+  #nametag.mt-woman::before { color: #d8a8c0; }
+
+  /* ===== Scene C shelf hotspot ===== */
+  #shelf-spot {
+    position: absolute; left: 14%; top: 15%;
+    width: 74%; height: 68%;
+    display: none; cursor: pointer; z-index: 6;
+  }
+  #shelf-spot.show { display: block; }
+  #shelf-spot .ring {
+    position: absolute; inset: 4% 8%;
+    border: 2px dashed rgba(255, 255, 255, .8);
+    border-radius: 16px;
+    box-shadow: 0 0 26px rgba(255, 205, 100, .28) inset;
+    animation: spotPulse 1.8s ease-in-out infinite;
+  }
+  #shelf-spot .tag {
+    position: absolute; left: 50%; top: -18px;
+    transform: translateX(-50%);
+    background: rgba(17, 19, 27, .88);
+    color: #ffd98a;
+    font-size: 15px; letter-spacing: 1px;
+    padding: 8px 22px; border-radius: 999px;
+    border: 1px solid rgba(255, 217, 138, .5);
+    white-space: nowrap;
+  }
+  @keyframes spotPulse { 0%, 100% { opacity: .4; } 50% { opacity: 1; } }
+
+  /* Scene C close-up: cup memory hotspots (positions match the two cups in store-shelf-close.png) */
+  .cup-spot {
+    position: absolute; display: none; cursor: pointer; z-index: 6;
+  }
+  .cup-spot.show { display: block; }
+  .cup-spot .ring {
+    position: absolute; inset: 0;
+    border: 2px dashed rgba(255, 255, 255, .78); border-radius: 18px;
+    box-shadow: 0 0 24px rgba(255, 205, 100, .26) inset;
+    animation: spotPulse 1.8s ease-in-out infinite;
+  }
+  .cup-spot:hover .ring { border-color: rgba(255, 217, 138, .95); }
+  .cup-spot .tag {
+    position: absolute; left: 50%; top: -14px;
+    transform: translateX(-50%);
+    background: rgba(17, 19, 27, .88);
+    color: #ffd98a;
+    font-size: 12.5px; letter-spacing: 1px;
+    padding: 5px 13px; border-radius: 999px;
+    border: 1px solid rgba(255, 217, 138, .5);
+    white-space: nowrap;
+  }
+  #cup-mori { left: 348px; top: 76px; width: 194px; height: 340px; }
+  #cup-nova { left: 738px; top: 76px; width: 194px; height: 340px; }
+
+  /* Scene C: memory recall modal */
+  #mem-modal {
+    position: absolute; inset: 0; z-index: 80; display: none;
+    align-items: center; justify-content: center;
+    background: rgba(4, 6, 10, .72); backdrop-filter: blur(3px);
+  }
+  #mem-modal.open { display: flex; animation: fadeIn .25s ease both; }
+  .mem-panel {
+    width: 460px; max-width: 86%; max-height: 88%; overflow-y: auto;
+    background: linear-gradient(160deg, rgba(24, 27, 38, .97), rgba(15, 17, 25, .97));
+    border: 1px solid var(--accent-soft); border-radius: 14px;
+    padding: 15px 17px 17px;
+  }
+  .mem-head { display: flex; align-items: center; justify-content: space-between; }
+  .mem-head .mb { font-weight: 800; letter-spacing: 2px; color: var(--accent); font-size: 17px; }
+  .mem-close {
+    cursor: pointer; color: #aab2c0; font-size: 15px;
+    padding: 4px 11px; border-radius: 8px; background: rgba(255, 255, 255, .07);
+  }
+  .mem-close:hover { color: #fff; background: rgba(255, 255, 255, .14); }
+  .mem-sub { font-size: 12.5px; color: #8a93a3; margin: 4px 0 12px; letter-spacing: .4px; }
+  #mem-cards .p-card { cursor: default; margin-bottom: 13px; }
+  #mem-cards .p-card:active { transform: none; }
+
+  /* ===== Top bar ===== */
+  #topbar {
+    position: absolute; top: 0; left: 0; right: 0;
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 64px 14px 20px;   /* leave room for the pause button at top-right */
+    z-index: 60;
+  }
+  #scene-tag {
+    font-size: 14px; letter-spacing: 2px;
+    color: rgba(255,255,255,.85);
+    background: rgba(12,14,20,.5);
+    border: 1px solid rgba(255,255,255,.18);
+    padding: 6px 16px;
+    border-radius: 3px;
+    backdrop-filter: blur(4px);
+  }
+  .top-actions { display: flex; gap: 10px; }
+  .top-btn {
+    font-size: 13px; letter-spacing: 2px;
+    color: rgba(255,255,255,.75);
+    background: rgba(12,14,20,.5);
+    border: 1px solid rgba(255,255,255,.18);
+    padding: 6px 14px;
+    border-radius: 3px;
+    cursor: pointer;
+    backdrop-filter: blur(4px);
+    transition: all .2s;
+  }
+  .top-btn:hover { color:#1a1d26; background: var(--accent); border-color: var(--accent); }
+  .top-btn.disabled { opacity: .3; cursor: default; pointer-events: none; }
+  .top-btn.disabled:hover { color: rgba(255,255,255,.75); background: rgba(12,14,20,.5); border-color: rgba(255,255,255,.18); }
+
+  /* ===== Pause / screen lock ===== */
+  #pause-btn {
+    position: absolute; top: 16px; right: 18px; z-index: 101;
+    width: 38px; height: 38px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 17px; line-height: 1; color: rgba(255,255,255,.82);
+    background: rgba(12,14,20,.5); border: 1px solid rgba(255,255,255,.18);
+    backdrop-filter: blur(4px); cursor: pointer; user-select: none;
+    transition: all .2s;
+  }
+  #pause-btn:hover { color: #fff; border-color: rgba(255,255,255,.4); }
+  #pause-lock {
+    position: absolute; inset: 0; z-index: 99; display: none;
+    flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+    background: rgba(4,6,10,.82); backdrop-filter: blur(3px); cursor: pointer;
+  }
+  #pause-lock.show { display: flex; animation: fadeIn .25s ease both; }
+  #pause-lock .pl-icon { font-size: 70px; color: rgba(255,255,255,.85); }
+  #pause-lock .pl-text { font-size: 14px; letter-spacing: 5px; color: rgba(255,255,255,.6); }
+
+  /* ===== Name tag ===== */
+  #nametag {
+    position: absolute;
+    left: 96px; bottom: 218px;
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 9px 26px 9px 20px;
+    background: linear-gradient(135deg, rgba(14,16,24,.92), rgba(24,28,40,.88));
+    border: 1px solid var(--accent-soft);
+    border-left: 3px solid var(--accent);
+    border-radius: 3px;
+    color: #f5ead6;
+    font-size: 19px;
+    letter-spacing: 2px;
+    z-index: 15;
+    backdrop-filter: blur(6px);
+    box-shadow: 0 4px 18px rgba(0,0,0,.4);
+  }
+  #nametag::before { content: "✦"; color: var(--accent); font-size: 15px; }
+  #nametag.hidden { opacity: 0; }
+
+  /* ===== Dialog box ===== */
+  #dialog {
+    position: absolute;
+    left: 60px; right: 60px; bottom: 40px;
+    min-height: 150px;
+    padding: 18px 34px 40px;
+    background: linear-gradient(to bottom, rgba(13,15,22,.88), rgba(20,23,33,.92));
+    border: 1px solid rgba(255,255,255,.14);
+    border-radius: 8px;
+    backdrop-filter: blur(6px);
+    box-shadow: 0 8px 34px rgba(0,0,0,.5);
+    z-index: 10;
+  }
+  #text {
+    font-size: 24px;
+    line-height: 1.7;
+    color: #f2efe9;
+    letter-spacing: 1px;
+    min-height: 76px;
+  }
+  /* dev line number badge */
+  #lineno {
+    position: absolute;
+    top: -12px; right: 18px;
+    font-size: 12px; letter-spacing: 1px;
+    color: var(--accent);
+    background: rgba(12,14,20,.9);
+    border: 1px solid var(--accent-soft);
+    padding: 3px 10px;
+    border-radius: 10px;
+    opacity: .85;
+  }
+  #next-arrow {
+    position: absolute;
+    right: 30px; bottom: 16px;
+    color: var(--accent);
+    font-size: 18px;
+    animation: bounce 1.1s ease-in-out infinite;
+    opacity: 0;
+    transition: opacity .3s;
+  }
+  #next-arrow.show { opacity: 1; }
+  @keyframes bounce { 0%,100% { transform: translateY(0);} 50% { transform: translateY(5px);} }
+
+  /* Narration mode: centered box, sprites hidden */
+  body.narration #dialog { left: 280px; right: 280px; bottom: 120px; min-height: 110px; }
+  body.narration #text { text-align: center; color: #e8e2d5; font-size: 23px; }
+  body.narration .sprite { opacity: 0; }
+  /* Scene I exception: narration text over the standing sprite */
+  body.stand .sprite:not(.hidden) { opacity: 1; }
+  /* Compact dialog (Scene C close-up): thin box hugging the bottom edge,
+     so the cup bottoms, brand pills and price tags above stay visible */
+  body.dialog-compact #dialog { bottom: 22px; min-height: 0; padding: 16px 34px 36px; }
+  body.dialog-compact #text { font-size: 23px; line-height: 1.7; min-height: 0; }
+  body.phone-mode #dialog, body.phone-mode #nametag { opacity: 0; pointer-events: none; }
+
+  /* ======================================================
+   *  PHONE MODE — Scene B (social feed on Debbie's phone)
+   * ====================================================== */
+  #phone {
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%,-50%) scale(.92);
+    width: 460px; height: 700px;
+    background: #fff;
+    border-radius: 34px;
+    border: 10px solid #17181d;
+    box-shadow: 0 30px 80px rgba(0,0,0,.65);
+    overflow: hidden;
+    z-index: 25;
+    display: none;
+    flex-direction: column;
+    cursor: default;
+  }
+  body.phone-mode #phone { display: flex; animation: phoneIn .55s cubic-bezier(.2,.8,.3,1) both; }
+  @keyframes phoneIn { from { transform: translate(-50%,-46%) scale(.86); opacity: 0; } to { transform: translate(-50%,-50%) scale(1); opacity: 1; } }
+
+  /* status bar */
+  .p-status {
+    height: 40px; flex: 0 0 40px;
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 0 22px; font-size: 14px; font-weight: 600; color: #111;
+    background: #fff;
+  }
+  .p-status .icons { letter-spacing: 2px; font-size: 12px; }
+
+  /* app header */
+  .p-header {
+    height: 54px; flex: 0 0 54px;
+    display: flex; align-items: center;
+    padding: 0 16px; gap: 14px;
+    background: #fff;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  .p-avatar {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: linear-gradient(135deg,#3a3f4d,#17181d);
+    color: #fff; font-size: 14px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+  .p-avatar .dot {
+    position: absolute; top: -4px; left: -4px;
+    background: #fe2c55; color: #fff;
+    font-size: 8px; padding: 1px 4px; border-radius: 8px;
+  }
+  .p-tabs { display: flex; gap: 22px; flex: 1; justify-content: center; }
+  .p-tab { font-size: 17px; color: #999; font-weight: 500; position: relative; }
+  .p-tab.active { color: #111; font-weight: 700; }
+  .p-tab.active::after {
+    content: ""; position: absolute; left: 50%; transform: translateX(-50%);
+    bottom: -8px; width: 24px; height: 3px; border-radius: 2px; background: #fe2c55;
+  }
+  .p-search { font-size: 19px; color: #111; }
+
+  /* feed */
+  #p-feed {
+    flex: 1;
+    overflow-y: auto;
+    background: #f8f8f8;
+    display: flex; gap: 8px;
+    padding: 8px;
+    scrollbar-width: none;
+  }
+  #p-feed::-webkit-scrollbar { display: none; }
+  .p-col { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+
+  .p-card { background: #fff; border-radius: 10px; overflow: hidden; cursor: pointer; flex-shrink: 0; }
+  .p-card:active { transform: scale(.98); }
+  .p-card .cover { width: 100%; display: block; object-fit: cover; }
+  .p-card .cover-ph {
+    width: 100%; display: flex; align-items: center; justify-content: center;
+    font-size: 44px; color: rgba(255,255,255,.9);
+  }
+  .p-card .c-body { padding: 8px 10px 9px; }
+  .p-card .c-title {
+    font-size: 14px; font-weight: 600; color: #222; line-height: 1.35;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .p-card .c-foot { margin-top: 7px; display: flex; align-items: center; gap: 6px; }
+  .p-card .c-ava {
+    width: 18px; height: 18px; border-radius: 50%; flex: 0 0 18px;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 10px; font-weight: 700;
+  }
+  .p-card .c-name { font-size: 11px; color: #888; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .p-card .c-like { font-size: 11px; color: #888; display: flex; align-items: center; gap: 3px; }
+  .p-card .c-like::before { content: "♡"; font-size: 13px; }
+
+  /* swipe hint */
+  #swipe-hint {
+    position: absolute; left: 0; right: 0;
+    bottom: 78px;
+    text-align: center;
+    font-size: 12px; letter-spacing: 1px; color: rgba(255,255,255,.85);
+    text-shadow: 0 1px 6px rgba(0,0,0,.8);
+    z-index: 26;
+    pointer-events: none;
+    opacity: 0; transition: opacity .5s;
+  }
+  #swipe-hint.show { opacity: 1; animation: hintFloat 1.6s ease-in-out infinite; }
+  @keyframes hintFloat { 0%,100% { transform: translateY(0);} 50% { transform: translateY(6px);} }
+
+  /* lock pill */
+  #lock-pill {
+    position: absolute;
+    left: 50%; bottom: 16px;
+    transform: translateX(-50%);
+    background: rgba(17,18,23,.85);
+    color: #fff; font-size: 13px; letter-spacing: 1px;
+    padding: 9px 22px; border-radius: 20px;
+    cursor: pointer; z-index: 40;
+    border: 1px solid rgba(255,255,255,.25);
+    backdrop-filter: blur(4px);
+    opacity: 0; pointer-events: none;
+    transition: opacity .6s ease .8s, background .2s;
+  }
+  #lock-pill.show { opacity: 1; pointer-events: auto; }
+  #lock-pill:hover { background: #fe2c55; }
+
+  /* bottom nav */
+  .p-nav {
+    height: 62px; flex: 0 0 62px;
+    display: flex; align-items: center; justify-content: space-around;
+    background: #fff; border-top: 1px solid #f0f0f0;
+  }
+  .p-nav .n-item { font-size: 11px; color: #999; text-align: center; }
+  .p-nav .n-item .n-ico { font-size: 20px; display: block; margin-bottom: 2px; }
+  .p-nav .n-item.active { color: #fe2c55; }
+  .p-nav .n-plus {
+    width: 44px; height: 30px; border-radius: 8px;
+    background: #fe2c55; color: #fff; font-size: 22px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: inset -3px 0 0 rgba(255,255,255,.35), inset 3px 0 0 rgba(255,255,255,.35);
+  }
+
+  /* ===== detail overlay (post opened) ===== */
+  #p-detail {
+    position: absolute; inset: 0;
+    background: #fff;
+    z-index: 50;
+    display: none;
+    flex-direction: column;
+  }
+  #p-detail.open { display: flex; animation: detailIn .3s ease both; }
+  @keyframes detailIn { from { opacity: 0; transform: translateY(30px);} to { opacity: 1; transform: none;} }
+  .d-top {
+    height: 52px; flex: 0 0 52px;
+    display: flex; align-items: center; gap: 12px;
+    padding: 0 14px; border-bottom: 1px solid #f0f0f0;
+    cursor: pointer; background: #fafafa;
+  }
+  .d-back { font-size: 32px; font-weight: 700; line-height: 1; color: #111; cursor: pointer; padding: 2px 16px; border-radius: 10px; }
+  .d-back:hover { background: #ececec; }
+  .d-top .d-title { font-size: 16px; font-weight: 700; color: #111; }
+  .d-img-wrap { width: 100%; flex: 0 0 300px; overflow: hidden; background: #eee; }
+  .d-img-wrap img, .d-img-wrap .cover-ph { width: 100%; height: 100%; object-fit: cover; }
+  .d-img-wrap .cover-ph { display: flex; align-items: center; justify-content: center; font-size: 70px; color: rgba(255,255,255,.92); }
+  .d-content { flex: 1; overflow-y: auto; padding: 16px 18px; }
+  .d-h1 { font-size: 19px; font-weight: 700; color: #111; line-height: 1.4; }
+  .d-author { display: flex; align-items: center; gap: 8px; margin: 12px 0 14px; }
+  .d-author .c-ava { width: 30px; height: 30px; border-radius: 50%; display:flex; align-items:center; justify-content:center; color:#fff; font-size: 13px; font-weight:700; }
+  .d-author .a-name { font-size: 13px; color: #333; font-weight: 600; flex: 1; }
+  .d-author .a-follow { font-size: 12px; color: #fff; background: #fe2c55; padding: 4px 14px; border-radius: 14px; }
+  .d-body { font-size: 15px; color: #333; line-height: 1.9; white-space: pre-line; }
+
+  /* ===== Choice panel (Scene C / E) ===== */
+  #choice-dim {
+    position: absolute; inset: 0; z-index: 55; display: none;
+    background: rgba(6, 8, 12, .58); backdrop-filter: blur(2px);
+  }
+  #choice-dim.show { display: block; animation: fadeIn .4s ease both; }
+  #choice {
+    position: absolute;
+    left: 50%; bottom: 216px;
+    transform: translateX(-50%);
+    width: 780px; max-width: calc(100% - 120px);
+    display: none; flex-direction: column; gap: 16px;
+    z-index: 75; text-align: center;
+  }
+  #choice.show { display: flex; animation: choiceIn .45s ease both; z-index: 70; }
+  @keyframes choiceIn { from { opacity:0; transform: translate(-50%, 18px);} to { opacity:1; transform: translate(-50%,0);} }
+  @keyframes choiceInQuad { from { opacity:0; transform: translate(-50%, -42%);} to { opacity:1; transform: translate(-50%, -50%);} }
+  #choice .q {
+    font-size: 22px; color: #f2efe9; letter-spacing: 1px;
+    text-shadow: 0 2px 10px rgba(0,0,0,.6);
+    white-space: pre-line;
+  }
+  #choice .opts { display: flex; gap: 18px; justify-content: center; }
+  .choice-btn {
+    flex: 1; max-width: 250px;
+    padding: 16px 12px; font-size: 24px; letter-spacing: 4px;
+    color: #f5ead6; cursor: pointer;
+    background: linear-gradient(135deg, rgba(20,23,33,.92), rgba(30,34,46,.92));
+    border: 1px solid var(--accent-soft);
+    border-radius: 8px; transition: all .2s;
+  }
+  .choice-btn:hover { background: var(--accent); color: #1a1d26; transform: translateY(-2px); }
+
+  /* ===== Freeze page (Scene C ending) ===== */
+  #freeze {
+    position: absolute; inset: 0;
+    display: none; flex-direction: column; align-items: center; justify-content: center;
+    padding: 60px; gap: 28px;
+    background: rgba(8,9,12,.62);
+    z-index: 35; text-align: center;
+    backdrop-filter: blur(3px);
+  }
+  #freeze.show { display: flex; animation: freezeIn .8s ease both; }
+  @keyframes freezeIn { from { opacity:0; transform: scale(1.02);} to { opacity:1; transform: none;} }
+  #freeze .line {
+    font-size: 31px; line-height: 1.75; color: #f2efe9; letter-spacing: 1px;
+    max-width: 920px; text-shadow: 0 2px 12px rgba(0,0,0,.5);
+  }
+  #freeze .line + .line { color: var(--accent); }
+
+  /* ===== System-style freeze (Scene C: answer saved) — stronger frozen feel ===== */
+  body.system-freeze #freeze {
+    background: radial-gradient(115% 95% at 50% 42%, rgba(10, 18, 32, .60), rgba(3, 6, 12, .94) 80%);
+    backdrop-filter: blur(9px) saturate(.8);
+  }
+  body.system-freeze #freeze::before {          /* frost creeping in from the edges */
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    box-shadow: inset 0 0 150px rgba(154, 195, 235, .30), inset 0 0 48px rgba(214, 234, 255, .17);
+    border: 1px solid rgba(180, 210, 245, .22);
+    animation: fadeIn 1.4s ease both;
+  }
+  body.system-freeze #freeze::after {           /* one-time frost light sweep */
+    content: ''; position: absolute; inset: -20%; pointer-events: none;
+    background: linear-gradient(115deg, transparent 42%, rgba(190, 220, 250, .14) 50%, transparent 58%);
+    transform: translateX(-70%);
+    animation: frostSweep 1.5s ease .15s both;
+  }
+  @keyframes frostSweep { to { transform: translateX(70%); } }
+  #freeze-sys {
+    display: none; align-items: center; gap: 10px;
+    font: 600 12.5px/1 ui-monospace, monospace; letter-spacing: 4px; color: #9fc3e4;
+  }
+  body.system-freeze #freeze-sys { display: flex; animation: fadeIn .9s ease .25s both; }
+  #freeze-sys .dot {
+    width: 7px; height: 7px; border-radius: 50%; background: #9ad7ff;
+    box-shadow: 0 0 10px rgba(154, 215, 255, .9);
+    animation: blink 1.6s ease infinite;
+  }
+  body.system-freeze #freeze .line {
+    color: #f4f7fb; font-size: 33px;
+    text-shadow: 0 0 26px rgba(150, 195, 240, .38), 0 2px 12px rgba(0, 0, 0, .55);
+    animation: fadeIn .9s ease .4s both;
+  }
+
+  body.freeze #dialog,
+  body.freeze #nametag,
+  body.freeze .sprite { display: none; }
+
+  /* Scene I: silent nightfall transition — visuals only, no dialog */
+  body.nightfall #dialog,
+  body.nightfall #nametag,
+  body.nightfall .sprite { display: none; }
+
+  /* ===== Scene D: chapter transition (ROLE SWITCH) ===== */
+  #switch {
+    position: absolute; inset: 0; z-index: 80; display: none;
+    flex-direction: column; align-items: center; justify-content: center; gap: 22px;
+    background: #04060a; color: #e8eaf0; text-align: center; padding: 40px;
+  }
+  #switch.show { display: flex; animation: fadeIn .6s ease both; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+  #switch .sys { font: 600 12px/1 ui-monospace, monospace; letter-spacing: 4px; color: #5b6b7f; }
+  #switch .role { font: 800 46px/1.1 ui-monospace, monospace; letter-spacing: 10px; text-shadow: 0 0 24px rgba(255,209,138,.35); }
+  #switch .role b { color: var(--accent); }
+  #switch .sub { font-size: 18px; color: #c7ccd6; letter-spacing: 1px; max-width: 720px; line-height: 1.7; }
+  #switch .sub b { color: #fff; }
+  #switch .hint { margin-top: 12px; font-size: 13px; color: #8a93a3; letter-spacing: 2px; animation: blink 1.4s steps(1) infinite; }
+
+  /* ===== Scene F: client-brand ad mockup (video) ===== */
+  #ad {
+    position: absolute; inset: 0; z-index: 85; display: none;
+    background: #000; cursor: pointer;
+  }
+  #ad.show { display: block; animation: fadeIn .6s ease both; }
+  #ad-video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  #ad .ad-cap {
+    position: absolute; top: 18px; left: 20px;
+    font: 700 13px/1 ui-monospace, monospace; letter-spacing: 3px;
+    color: #fff; background: rgba(0,0,0,.45); padding: 7px 12px; border-radius: 6px;
+    border: 1px solid rgba(255,255,255,.28);
+  }
+  #ad .ad-hint {
+    position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%);
+    font-size: 13px; color: #fff; letter-spacing: 2px; padding: 8px 16px;
+    background: rgba(0,0,0,.4); border-radius: 20px;
+    animation: blink 1.4s steps(1) infinite;
+  }
+
+  /* ===== Scene E: computer screen (work chat) ===== */
+  #screen { position: absolute; inset: 0; z-index: 40; display: none; flex-direction: column; }
+  #screen.show { display: flex; animation: fadeIn .5s ease both; }
+  #screen .wallpaper { position: absolute; inset: 0; background: radial-gradient(120% 120% at 80% 10%, #2a3550, #11161f 72%); }
+  #screen .desk-icons { position: absolute; top: 22px; right: 26px; display: flex; flex-direction: column; gap: 16px; }
+  #screen .desk-i { width: 76px; text-align: center; color: #eef1f6; font-size: 11px; text-shadow: 0 1px 2px rgba(0,0,0,.4); }
+  #screen .desk-i .ico { width: 52px; height: 52px; margin: 0 auto 5px; border-radius: 12px; background: rgba(255,255,255,.14); display: flex; align-items: center; justify-content: center; font-size: 25px; box-shadow: inset 0 1px 0 rgba(255,255,255,.25); }
+  #screen .taskbar { position: absolute; left: 0; right: 0; bottom: 0; height: 46px; background: rgba(10,12,18,.86); backdrop-filter: blur(8px); display: flex; align-items: center; gap: 12px; padding: 0 16px; color: #dfe4ec; }
+  #screen .tb-start { width: 34px; height: 34px; border-radius: 50%; background: var(--accent); color: #1a1d26; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 17px; }
+  #screen .tb-ico { width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,.1); border-radius: 7px; font-size: 15px; }
+  #screen .tb-clock { margin-left: auto; font-size: 12px; opacity: .85; }
+  #screen .chat { position: absolute; left: 50%; top: 46px; transform: translateX(-50%); width: 720px; max-width: calc(100% - 64px); height: 588px; background: #fbfbfd; border-radius: 14px; box-shadow: 0 28px 70px rgba(0,0,0,.55); display: flex; flex-direction: column; overflow: hidden; border: 1px solid #e6e7ea; }
+  #screen .c-title { height: 58px; flex: 0 0 58px; display: flex; align-items: center; gap: 12px; padding: 0 20px; border-bottom: 1px solid #eceef1; font-size: 17px; font-weight: 700; color: #1a1d26; }
+  #screen .c-title .ava { width: 36px; height: 36px; border-radius: 50%; background: #c0392b; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700; }
+  #screen .c-body { flex: 1; overflow-y: auto; padding: 22px 20px; background: #f3f4f7; display: flex; flex-direction: column; gap: 16px; }
+  #screen .msg { max-width: 82%; padding: 13px 17px; border-radius: 16px; font-size: 16px; line-height: 1.6; color: #1c1e24; white-space: pre-line; }
+  #screen .msg.boss { align-self: flex-start; background: #fff; border: 1px solid #e3e5e9; border-bottom-left-radius: 4px; }
+  #screen .msg.debbie { align-self: flex-end; background: #d7e3ff; border-bottom-right-radius: 4px; }
+  #screen .typing { align-self: flex-start; background: #fff; border: 1px solid #e3e5e9; border-radius: 16px; border-bottom-left-radius: 4px; padding: 17px 19px; }
+  #screen .typing i { width: 8px; height: 8px; border-radius: 50%; background: #b6bcc6; display: inline-block; margin: 0 2px; animation: blink 1s steps(1) infinite; }
+  #screen .typing i:nth-child(2) { animation-delay: .2s; }
+  #screen .typing i:nth-child(3) { animation-delay: .4s; }
+  #screen .c-foot { height: 52px; flex: 0 0 52px; display: flex; align-items: center; padding: 0 16px; color: #9aa0aa; font-size: 14px; border-top: 1px solid #eceef1; }
+  #screen .screen-hint { position: absolute; left: 50%; bottom: 58px; transform: translateX(-50%); color: #f2efe9; font-size: 13px; letter-spacing: 2px; text-shadow: 0 2px 8px rgba(0,0,0,.6); opacity: 0; transition: opacity .3s; }
+  #screen .screen-hint.show { opacity: 1; animation: blink 1.4s steps(1) infinite; }
+
+  /* hide normal HUD while in switch / screen views */
+  body.switch #dialog, body.switch #nametag, body.switch .sprite,
+  body.switch #shelf-spot, body.switch #topbar { display: none; }
+  body.screen #dialog, body.screen #nametag, body.screen .sprite,
+  body.screen #shelf-spot, body.screen #freeze { display: none; }
+
+  /* hide normal HUD while the ad overlay is up */
+  body.ad #dialog, body.ad #nametag, body.ad .sprite,
+  body.ad #shelf-spot, body.ad #topbar, body.ad #choice, body.ad #choice-dim,
+  body.ad #freeze, body.ad #switch, body.ad #screen { display: none; }
+
+  /* hide normal HUD while the multi-select quiz is up (#choice stays visible) */
+  body.multi #dialog, body.multi #nametag, body.multi .sprite,
+  body.multi #shelf-spot, body.multi #topbar, body.multi #freeze { display: none; }
+
+  /* quad choice (Scene E: 4 full-sentence options in a 2×2 grid, vertically centered, larger type) */
+  #choice.quad { top: 50%; bottom: auto; transform: translate(-50%, -50%); width: 940px; max-width: calc(100% - 80px); gap: 18px; }
+  #choice.quad.show { animation: choiceInQuad .45s ease both; }
+  #choice.quad .q { font-size: 22px; line-height: 1.5; }
+  #choice.quad .opts { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .choice-btn.quad { display: flex; align-items: flex-start; gap: 16px; text-align: left; max-width: none; flex: none; padding: 20px 22px; font-size: 18px; letter-spacing: .2px; line-height: 1.65; }
+  .choice-btn.quad .ck { flex: 0 0 auto; width: 30px; height: 30px; border-radius: 7px; background: var(--accent); color: #1a1d26; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 15px; }
+
+  /* multi-select (Scene G quiz) — vertically centered via choiceInQuad
+     (same approach as quad: the keyframe must end at translate(-50%,-50%)) */
+  #choice.multi { top: 50%; bottom: auto; transform: translate(-50%, -50%); width: 900px; max-width: calc(100% - 80px); text-align: center; gap: 14px; }
+  #choice.multi.show { animation: choiceInQuad .45s ease both; }
+  #choice.multi .q { font-size: 22px; line-height: 1.5; }
+  #choice.multi .opts { flex-direction: column; gap: 12px; }
+  .choice-btn.multi {
+    display: flex; align-items: flex-start; justify-content: center; gap: 14px; text-align: center;
+    max-width: none; flex: none; padding: 15px 20px; font-size: 18px; line-height: 1.55;
+    letter-spacing: .2px; color: #f5ead6; background: linear-gradient(135deg, rgba(20,23,33,.92), rgba(30,34,46,.92));
+    border: 1px solid var(--accent-soft); border-radius: 8px; transition: all .2s;
+  }
+  .choice-btn.multi .bx { flex: 0 0 auto; width: 24px; height: 24px; margin-top: 2px; border: 2px solid var(--accent); border-radius: 5px; background: transparent; transition: background .15s; }
+  .choice-btn.multi.sel { border-color: var(--accent); background: linear-gradient(135deg, rgba(44,36,20,.95), rgba(54,42,24,.95)); }
+  .choice-btn.multi.sel .bx { background: var(--accent); box-shadow: inset 0 0 0 3px rgba(26,29,38,.9); }
+  .choice-btn.multi:hover { transform: translateY(-1px); }
+  .choice-confirm {
+    align-self: center; margin-top: 4px; padding: 13px 40px;
+    font-size: 17px; letter-spacing: 4px; font-weight: 700; color: #1a1d26;
+    background: var(--accent); border: none; border-radius: 7px; cursor: pointer;
+  }
+  .choice-confirm:hover { filter: brightness(1.08); }
+
+  /* ===== Transition ===== */
+  #fade {
+    position: absolute; inset: 0;
+    background: #000;
+    opacity: 0; pointer-events: none;
+    transition: opacity .5s ease;
+    z-index: 90;
+  }
+  #fade.on { opacity: 1; }
+  #fade.slow { transition: opacity 2.4s ease; }   /* Act finale: slow fade out */
+
+  /* stable rendering for reduced-motion users & headless captures */
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+  <div id="stage">
+    <div id="bg"></div>
+    <div id="bg-night"></div>
+    <img id="spDebbie" class="sprite hidden" src="assets/debbie.png" alt="">
+    <img id="spDebbiePhone" class="sprite hidden" src="assets/debbie-phone.png" alt="">
+    <img id="spStand" class="sprite hidden" src="assets/debbie-stand.png" alt="">
+
+    <!-- Act 2: Milo & night-Debbie sprites + two-shot CGs -->
+    <img id="spDeb2" class="sprite hidden" src="" alt="">
+    <img id="spMilo" class="sprite hidden" src="" alt="">
+    <img id="spDuo" class="sprite hidden" src="" alt="">
+
+    <!-- Scene C: tap-the-shelf hotspot (far view) -->
+    <div id="shelf-spot" onclick="event.stopPropagation(); advance();">
+      <div class="ring"></div>
+      <div class="tag">Take a closer look</div>
+    </div>
+
+    <!-- Scene C close-up: tap a cup to recall Debbie's feed posts -->
+    <div id="cup-mori" class="cup-spot" onclick="event.stopPropagation(); openMemory('MORI')">
+      <div class="ring"></div>
+      <div class="tag">Recall MORI posts</div>
+    </div>
+    <div id="cup-nova" class="cup-spot" onclick="event.stopPropagation(); openMemory('NOVA')">
+      <div class="ring"></div>
+      <div class="tag">Recall NOVA posts</div>
+    </div>
+
+    <div id="topbar">
+      <div id="scene-tag">Act 1 · Scene A</div>
+      <div class="top-actions">
+        <div class="top-btn" id="btn-back" onclick="back(event)">Back</div>
+        <div class="top-btn" onclick="restart(event)">Restart</div>
+        <div class="top-btn" onclick="backHome(event)">Home</div>
+      </div>
+    </div>
+
+    <!-- ===== Pause / screen lock ===== -->
+    <div id="pause-btn" onclick="togglePause(event)" title="Pause (P)">⏸</div>
+    <div id="pause-lock" onclick="togglePause(event)">
+      <div class="pl-icon">⏸</div>
+      <div class="pl-text">PAUSED — tap or press P to resume</div>
+    </div>
+
+    <div id="nametag" class="hidden">Debbie</div>
+
+    <div id="dialog">
+      <div id="lineno">L1</div>
+      <div id="text"></div>
+      <div id="next-arrow">▼ Next</div>
+    </div>
+
+    <!-- ===== Scene C/E: choice ===== -->
+    <div id="choice-dim"></div>
+    <div id="choice">
+      <div class="q" id="choice-q"></div>
+      <div class="opts" id="choice-opts"></div>
+    </div>
+
+    <!-- ===== Scene C: freeze page ===== -->
+    <div id="freeze">
+      <div id="freeze-sys"><span class="dot"></span>SYSTEM · ANSWER SAVED</div>
+      <div id="freeze-text"></div>
+    </div>
+
+    <!-- ===== Scene C: memory recall modal (feed posts) ===== -->
+    <div id="mem-modal" onclick="event.stopPropagation(); if (event.target === this) closeMemory();">
+      <div class="mem-panel" onclick="event.stopPropagation()">
+        <div class="mem-head">
+          <span class="mb" id="mem-brand"></span>
+          <div class="mem-close" onclick="event.stopPropagation(); closeMemory()">✕</div>
+        </div>
+        <div class="mem-sub">Posts Debbie scrolled past on her feed this morning</div>
+        <div id="mem-cards"></div>
+      </div>
+    </div>
+
+    <!-- ===== Scene D: chapter transition (ROLE SWITCH) ===== -->
+    <div id="switch">
+      <div class="sys" id="sw-sys">SYSTEM · ROLE UPDATE</div>
+      <div class="role" id="sw-role">ROLE <b>SWITCH</b></div>
+      <div class="sub" id="switch-text"></div>
+      <div class="hint">TAP TO CONTINUE ▸</div>
+    </div>
+
+    <!-- ===== Scene F: client-brand ad mockup (video) ===== -->
+    <div id="ad">
+      <video id="ad-video" muted loop playsinline autoplay></video>
+      <div class="ad-cap" id="ad-cap">AD MOCKUP</div>
+      <div class="ad-hint">▼ TAP TO CONTINUE</div>
+    </div>
+
+    <!-- ===== Scene E: computer screen (work chat) ===== -->
+    <div id="screen">
+      <div class="wallpaper"></div>
+      <div class="desk-icons">
+        <div class="desk-i"><div class="ico">📁</div>Files</div>
+        <div class="desk-i"><div class="ico">🎨</div>Briefs</div>
+        <div class="desk-i"><div class="ico">📊</div>Data</div>
+        <div class="desk-i"><div class="ico">🖼️</div>Assets</div>
+      </div>
+      <div class="chat">
+        <div class="c-title"><div class="ava">B</div>Work Chat · Boss</div>
+        <div class="c-body" id="chat-body"></div>
+        <div class="c-foot"><span>Message Boss…</span></div>
+      </div>
+      <div class="screen-hint" id="screen-hint">▼ TAP TO CONTINUE</div>
+      <div class="taskbar">
+        <div class="tb-start">D</div>
+        <div class="tb-ico">💬</div>
+        <div class="tb-ico">📧</div>
+        <div class="tb-ico">🗓️</div>
+        <div class="tb-clock" id="tb-clock">9:02</div>
+      </div>
+    </div>
+
+    <!-- ===== Scene B: phone feed ===== -->
+    <div id="swipe-hint">Swipe up for more ▲</div>
+    <div id="lock-pill" onclick="lockPhone(event)">🔒 Lock phone</div>
+    <div id="phone">
+      <div class="p-status"><span>8:15</span><span class="icons">●●● 5G ▮</span></div>
+      <div class="p-header">
+        <div class="p-avatar">D<span class="dot">更新</span></div>
+        <div class="p-tabs">
+          <div class="p-tab active">Discover</div>
+          <div class="p-tab">Nearby</div>
+        </div>
+        <div class="p-search">🔍</div>
+      </div>
+
+      <div id="p-feed">
+        <div class="p-col" id="col-l"></div>
+        <div class="p-col" id="col-r"></div>
+      </div>
+
+      <div class="p-nav">
+        <div class="n-item active"><span class="n-ico">⌂</span>Home</div>
+        <div class="n-item"><span class="n-ico">🛍</span>Shop</div>
+        <div class="n-plus">+</div>
+        <div class="n-item"><span class="n-ico">💬</span>Inbox</div>
+        <div class="n-item"><span class="n-ico">👤</span>Me</div>
+      </div>
+
+      <!-- post detail overlay -->
+      <div id="p-detail">
+        <div class="d-top" onclick="closeDetail(event)">
+          <div class="d-back" aria-label="返回">‹</div>
+        </div>
+        <div class="d-img-wrap" id="d-img"></div>
+        <div class="d-content">
+          <div class="d-h1" id="d-h1"></div>
+          <div class="d-author">
+            <div class="c-ava" id="d-ava"></div>
+            <div class="a-name" id="d-name"></div>
+            <div class="a-follow">Follow</div>
+          </div>
+          <div class="d-body" id="d-body"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="fade"></div>
+  </div>
+
+<script>
+/* ================================================================
+ *  FOLLOW DEBBIE — Act 1 (day)
+ *  Scene A : subway platform, one narration line   (L1)
+ *  Scene B : phone feed interaction                (L2 look / feed / L3 / L4)
+ *  Scene C : convenience store — cup choice        (L5 walk / L6 shelf far → tap shelf /
+ *                                                    L7 close-up → tap to reveal choice / freeze)
+ *  Scene D : chapter transition — ROLE SWITCH       (black system overlay + chime)
+ *  Scene E : the office — work-mode screen          (L8 office / L9 work chat + ABCD choice / freeze)
+ *
+ *  Every dialog box carries a sequential line number (line: N below,
+ *  shown on screen as the L-badge). Keep numbers continuous.
+ * ================================================================ */
+const NODES = {
+  /* ---------- SCENE A · On her way ---------- */
+  start: { line:1, scene:'A', bg:'subway', debbie:true, who:null,
+           text:'Debbie is on her way to the office.' },
+
+  /* ---------- SCENE B · The phone feed ---------- */
+  b_look: { line:2, scene:'B', bg:'subway', debbiePhone:true, who:null,
+            text:'A buzz in her pocket.\nDebbie takes out her phone to check.' },
+
+  feed:  { scene:'B', type:'phone' },
+
+  b_end: { line:3, scene:'B', bg:'subway', debbie:false, who:null, narration:true,
+           text:'Debbie scrolls a little longer, then locks her phone.\nTime to get to work.' },
+
+  end:   { line:4, scene:'B', bg:'subway', debbie:false, who:null, narration:true,
+           text:'— To be continued —' },
+
+  /* ---------- SCENE C · The convenience store ---------- */
+  c_walk: { line:5, scene:'C', bg:'street', debbie:true, spriteLeft:true, spriteFar:true, who:null,
+            text:'On the way to the office, Debbie passed by a convenience supermarket.\nShe thought that she needed a cup to drink water at work.' },
+
+  c_store: { line:6, scene:'C', bg:'storeFar', spot:true, who:null, dialogCompact:true,
+             text:'Debbie steps inside.\nThe shelf is packed with cups and bottles —\non the middle row, two cups sit side by side.' },
+
+  c_close: { line:7, scene:'C', bg:'storeClose', debbie:false, who:null, dialogCompact:true, cups:true,
+             text:'Debbie realizes she still needs a cup for the office.\nMORI and NOVA — same capacity, same price.\nBoth look perfectly fine.',
+             choice: {
+               q: 'Which one do you think Debbie would be more likely to choose?',
+               options: [
+                 { label: 'MORI', value: 'MORI', goto: 'c_freeze' },
+                 { label: 'NOVA', value: 'NOVA', goto: 'c_freeze' }
+               ]
+             } },
+
+  c_freeze: { scene:'C', bg:'storeClose', freeze:true, systemFreeze:true,
+              text: 'The system has remembered your answer.' },
+
+  /* ---------- SCENE D · Chapter transition ---------- */
+  /* no bg: show() paints solid black so the office never flashes before this page */
+  d_switch: { scene:'D', type:'switch', who:null,
+              text: 'Debbie is no longer just a consumer.\nNow she is the person designing the ad.' },
+
+  /* ---------- SCENE E · The office ---------- */
+  e_office: { line:8, scene:'D', bg:'office', debbie:false, who:null, narration:true,
+              text:'Debbie sits down at her desk.\nThe office is quiet before the day begins.' },
+
+  e_screen: { line:9, scene:'D', bg:'office', type:'screen', who:null,
+              choice: {
+                q: 'If you are making an ad for [BRAND], what would you pair it with?\nThink about what could make the brand feel more appealing, not just more visible.',
+                mode: 'quad',
+                options: [
+                  { label:'A calm lifestyle scene with warm lighting, soft music, and a relaxed creator', goto:'e_freeze' },
+                  { label:'A product-focused video explaining the cup’s material, capacity, and insulation', goto:'e_freeze' },
+                  { label:'A famous celebrity in a dramatic short film', goto:'e_freeze' },
+                  { label:'A fast, colorful montage full of trendy props and effects', goto:'e_freeze' }
+                ]
+              } },
+
+  e_freeze: { scene:'D', bg:'office', freeze:true,
+              text: 'There is not one magical advertising formula here.\nThe key question is whether the things around the brand already carry some positive value, and whether that value actually becomes connected to the brand.' },
+
+  /* ---------- SCENE F · Campaign / client-brand ad ---------- */
+  f_intro: { line:10, scene:'F', narration:true,
+             text:'Debbie and the team discuss the options.\nAfter several rounds of ideas, they finally settle on a campaign.\n\nA polished lifestyle ad goes live.' },
+
+  f_ad: { scene:'F', type:'ad', who:null },
+
+  /* ---------- SCENE G · Campaign follow-up (office) ---------- */
+  g_intro: { line:11, scene:'F', bg:'office', narration:true,
+             text:'A few weeks later...\n\nThe campaign is getting attention.\n\nPeople say:\n"The video is beautiful."\n"I love the creator."\n"What song is that?"\n\nBut when the team checks the follow up results...\nPeople remember the ad.\nVery few clearly remember [CLIENT BRAND].' },
+
+  g_choice: { scene:'F', bg:'office', type:'multi', who:null,
+              choice: {
+                q: 'What might explain this?\nYou can suggest more than one reason.',
+                mode: 'multi',
+                options: [
+                  { label:'The celebrity, story, or music may have pulled attention away from the brand itself.' },
+                  { label:'People may remember the ad as a whole without forming a strong connection to the brand.' },
+                  { label:'The brand cue may have been too weak or too forgettable compared with the rest of the ad.' },
+                  { label:'The campaign may simply need more repeated exposure before the brand sticks.' },
+                  { label:'If people loved the ad, the brand learning must have succeeded.' }
+                ]
+              } },
+
+  g_freeze: { scene:'F', bg:'office', freeze:true,
+              text:'A memorable ad is not always a memorable brand.\nStrong creative elements can compete with the brand for attention, so liking the ad does not automatically mean that a strong brand association was formed.' },
+
+  /* ---------- SCENE H · Who to win over first ---------- */
+  h_intro1: { line:12, scene:'D', bg:'office', narration:true,
+             text:'It is almost time to leave.\n\nBefore Debbie closes her laptop, one last question comes up.' },
+
+  h_intro2: { line:13, scene:'D', bg:'office', narration:true,
+             text:'[COMPETITOR BRAND] has been around for years.\nMany people already know it, use it, and have strong preferences about it.\n\nWith a limited campaign budget, who should [CLIENT BRAND] try to win over first?' },
+
+  h_choice: { scene:'D', bg:'office', type:'screen', skipChat:true, who:null,
+              choice: {
+                q: 'With a limited campaign budget, who should [CLIENT BRAND] try to win over first?',
+                mode: 'quad',
+                options: [
+                  { label:'Loyal [COMPETITOR BRAND] users who already strongly prefer their brand', goto:'h_freeze' },
+                  { label:'People who know both brands but do not have a strong preference yet', goto:'h_freeze' },
+                  { label:'Split the campaign across both groups', goto:'h_freeze' },
+                  { label:'It should not matter because the same positive ad should work equally well on everyone', goto:'h_freeze' }
+                ]
+              } },
+
+  h_freeze: { scene:'D', bg:'office', freeze:true,
+              text:'A new ad does not act on a blank mind.\nPeople bring years of previous experiences and preferences with them.' },
+
+  /* ---------- SCENE I · Night exit — Act finale ---------- */
+  i_night: { line:14, scene:'D', bg:'office', type:'nightfall', who:null },
+
+  i_stand: { line:15, scene:'D', narration:true, who:null, endAct:true, actNext:'j_open',
+             text:'Debbie closes her laptop and leaves the office.\n\nOne thought stays with her:\n\nIt may be easier to give a neutral cue new meaning than to rewrite years of meaning already attached to it.\n\nAnd outside the office, what becomes meaningful is not always a brand.' },
+
+  /* =====================================================
+   *  ACT II — MILO & DEBBIE  (Scenes J/K/L)
+   * ===================================================== */
+
+  /* ---------- ACT II · SCENE A — THE EARRING ---------- */
+  j_open: { scene:'J', type:'switch', who:null,
+            sysTitle:'ACT II · SCENE A', roleTitle:'THE <b>EARRING</b>',
+            text:'Evening. Milo’s room.' },
+
+  j1: { line:16, scene:'J', bg:'miloRoom', dir:true, who:null, deb2:'deb2-neutral', milo:'milo-neutral',
+        text:'Evening light. Milo’s room is a little messy — clothes piled on the chair.\nDebbie leans against the edge of the bed.' },
+  j2: { line:17, scene:'J', bg:'miloRoom', dir:true, who:null, deb2:'deb2-neutral', milo:'milo-neutral',
+        text:'Milo gathers the clothes from the chair.\nA strip of red fabric slips out from under the coat. Debbie sees it.' },
+  j3: { line:18, scene:'J', bg:'miloRoom', who:'DEBBIE', deb2:'deb2-hip', milo:'milo-neutral',
+        text:'What’s that?' },
+  j4: { line:19, scene:'J', bg:'miloRoom', dir:true, who:null, deb2:'deb2-hip', milo:'milo-uneasy',
+        text:'Milo covers the fabric with the coat at once.' },
+  j5: { line:20, scene:'J', bg:'miloRoom', who:'MILO', deb2:'deb2-hip', milo:'milo-uneasy',
+        text:'Nothing.' },
+  j6: { line:21, scene:'J', bg:'miloRoom', who:'DEBBIE', deb2:'deb2-hip', milo:'milo-uneasy',
+        text:'That was a very dramatic nothing.' },
+  j7: { line:22, scene:'J', bg:'dress', dir:true, who:null,
+        text:'Debbie lifts the coat — a red dress.\nA single red earring slips from its folds. She bends down and picks it up.' },
+  j8: { line:23, scene:'J', bg:'miloRoom', who:'DEBBIE', deb2:'deb2-earring', milo:'milo-ashamed',
+        text:'It’s a beautiful dress. I can wear it for you, if you like.' },
+  j9: { line:24, scene:'J', bg:'miloRoom', who:'MILO', deb2:'deb2-earring', milo:'milo-ashamed',
+        text:'No. I like wearing it.' },
+  j10:{ line:25, scene:'J', bg:'miloRoom', dir:true, who:null, deb2:'deb2-hip', milo:'milo-ashamed',
+        text:'Debbie puts away her smile. She looks at him, and waits.' },
+  j11:{ line:26, scene:'J', bg:'miloRoom', who:'MILO', deb2:'deb2-hip', milo:'milo-ashamed',
+        text:'Sometimes I like being told what to do. Sometimes pain.\nIs there something wrong with me?' },
+  j_choice: { scene:'J', bg:'miloRoom', who:null, deb2:'deb2-hip', milo:'milo-ashamed',
+              text:'He is waiting for an answer.',
+              choice: { q:'How does Debbie answer him?',
+                options: [
+                  { label:'A · Freudian', goto:'j_fre1' },
+                  { label:'B · Behaviorist', goto:'j_beh1' }
+                ] } },
+  j_fre1: { line:27, scene:'J', bg:'miloRoom', who:'DEBBIE', deb2:'deb2-teach', milo:'milo-ashamed',
+            text:'Maybe there’s some primitive desire underneath all this\nthat you’ve been repressing.' },
+  j_fre2: { line:28, scene:'J', bg:'miloRoom', who:'MILO', deb2:'deb2-teach', milo:'milo-think',
+            text:'So you think it was always there?' },
+  j_fre3: { line:29, scene:'J', bg:'miloRoom', who:'DEBBIE', deb2:'deb2-open', milo:'milo-think',
+            text:'Maybe.' },
+  j_beh1: { line:27, scene:'J', bg:'miloRoom', who:'DEBBIE', deb2:'deb2-teach', milo:'milo-ashamed',
+            text:'Maybe the dress is only a cue.\nYou learned to associate it with something else.' },
+  j_beh2: { line:28, scene:'J', bg:'miloRoom', who:'MILO', deb2:'deb2-teach', milo:'milo-think',
+            text:'You think I was conditioned?' },
+  j_beh3: { line:29, scene:'J', bg:'miloRoom', who:'DEBBIE', deb2:'deb2-open', milo:'milo-think',
+            text:'Maybe.' },
+  j_conv1:{ line:30, scene:'J', bg:'miloRoom', dir:true, who:null, duo:'cg-earring',
+            text:'Milo looks at the red earring in Debbie’s hand,\nthen at the dress.' },
+  j_conv2:{ line:31, scene:'J', bg:'miloRoom', who:'MILO', duo:'cg-earring',
+            text:'Then why this dress?' },
+  j_fb1: { line:32, scene:'J', bg:'flashback', dir:true, fb:true, who:null,
+            text:'FLASHBACK — a childhood home, daytime.\nA young Milo stands in a red dress in front of the mirror.\nSomeone straightens his collar, gives him a candy, and holds him.' },
+  j_fb2: { line:33, scene:'J', bg:'flashback', fb:true, who:'WOMAN',
+            text:'Sweetie, you look so cute.' },
+  j_now1:{ line:34, scene:'J', bg:'miloRoom', dir:true, who:null, deb2:'deb2-earring', milo:'milo-sit',
+            text:'Back in the present. Debbie still holds the earring.' },
+  j_now2:{ line:35, scene:'J', bg:'miloRoom', who:'DEBBIE', deb2:'deb2-teach', milo:'milo-sit',
+            text:'I can’t tell you where all of this began.\nBut maybe you learned to associate the dress with being praised.\nWith being held. With feeling safe.' },
+  j_now3:{ line:36, scene:'J', bg:'miloRoom', who:'MILO', deb2:'deb2-teach', milo:'milo-think',
+            text:'So I learned it?' },
+  j_now4:{ line:37, scene:'J', bg:'miloRoom', who:'DEBBIE', deb2:'deb2-open', milo:'milo-think',
+            text:'Maybe part of it.' },
+  j_end: { line:38, scene:'J', bg:'miloRoom', dir:true, who:null, deb2:'deb2-neutral', milo:'milo-sit',
+            text:'Debbie places the earring on the desk.\nMilo keeps looking at it.' },
+
+  /* ---------- ACT II · SCENE B — ERASE ---------- */
+  k_open: { scene:'K', type:'switch', who:null,
+            sysTitle:'ACT II · SCENE B', roleTitle:'<b>ERASE</b>',
+            text:'SUPER: A few weeks later' },
+
+  k1: { line:39, scene:'K', bg:'miloRoomNight', dir:true, who:null,
+        text:'Night, weeks later. The room is dim.\nThe door is not fully closed — a seam of cold bathroom light\nspills through the gap.' },
+  k2: { line:40, scene:'K', bg:'miloRoomNight', dir:true, who:null, deb2:'deb2-neutral', milo:'milo-slump',
+        text:'A suppressed retching sound from inside.\nDebbie pushes the door open — Milo is sitting on the floor,\nhis phone looping pictures of the red dress and the earring,\na timer running beside him.' },
+  k3: { line:41, scene:'K', bg:'miloRoomNight', dir:true, who:null, deb2:'deb2-grab', milo:'milo-slump',
+        text:'She takes the sharp-smelling bottle from his hand.' },
+  k4: { line:42, scene:'K', bg:'miloRoomNight', who:'MILO', deb2:'deb2-grab', milo:'milo-slump',
+        text:'Give it back.' },
+  k5: { line:43, scene:'K', bg:'miloRoomNight', who:'DEBBIE', deb2:'deb2-startle', milo:'milo-slump',
+        text:'What the hell is this?\nNo wonder you barely eat anymore. How long?' },
+  k6: { line:44, scene:'K', bg:'miloRoomNight', who:'MILO', deb2:'deb2-startle', milo:'milo-slump',
+        text:'…Not long.' },
+  k7: { line:45, scene:'K', bg:'miloRoomNight', dir:true, who:null, deb2:'deb2-worry', milo:'milo-slump',
+        text:'Her eyes catch a notebook at the corner of the desk.\nMilo reaches out to stop her — too late. It is already open:\nweeks of dates, and short entries, line after line.' },
+  k8: { line:46, scene:'K', bg:'miloRoomNight', who:'DEBBIE', deb2:'deb2-startle', milo:'milo-slump',
+        text:'This started the night after we talked.\nYou’ve been doing this for weeks.' },
+  k9: { line:47, scene:'K', bg:'miloRoomNight', dir:true, who:null, deb2:'deb2-shout', milo:'milo-slump',
+        text:'She slams the notebook back onto the desk.' },
+  k10:{ line:48, scene:'K', bg:'miloRoomNight', who:'DEBBIE', deb2:'deb2-shout', milo:'milo-slump',
+        text:'You lied. You’re hurting yourself.' },
+  k11:{ line:49, scene:'K', bg:'miloRoomNight', who:'MILO', deb2:'deb2-shout', milo:'milo-angry',
+        text:'You said I learned to associate it with feeling good.\nIf I associate it with something disgusting instead, I’ll stop wanting it.\nThen I can be normal.' },
+  k12:{ line:50, scene:'K', bg:'miloRoomNight', who:'DEBBIE', deb2:'deb2-worry', milo:'milo-angry',
+        text:'That’s not what I meant.' },
+  k13:{ line:51, scene:'K', bg:'miloRoomNight', who:'MILO', deb2:'deb2-worry', milo:'milo-think',
+        text:'Then what did you mean?' },
+  k_choice: { scene:'K', bg:'miloRoomNight', who:null, deb2:'deb2-worry', milo:'milo-think',
+              text:'Debbie takes a breath.',
+              choice: { q:'How does Debbie respond?',
+                options: [
+                  { label:'A · Method focused', goto:'k_m1' },
+                  { label:'B · Meaning focused', goto:'k_n1' }
+                ] } },
+  k_m1: { line:52, scene:'K', bg:'miloRoomNight', who:'DEBBIE', deb2:'deb2-teach', milo:'milo-think',
+          text:'Learning can shape desire.\nBut this is not how you treat it.' },
+  k_m2: { line:53, scene:'K', bg:'miloRoomNight', dir:true, who:null, deb2:'deb2-teach', milo:'milo-ashamed',
+          text:'Milo’s voice is very quiet.' },
+  k_m3: { line:54, scene:'K', bg:'miloRoomNight', who:'MILO', deb2:'deb2-teach', milo:'milo-ashamed',
+          text:'But at least it works.' },
+  k_n1: { line:52, scene:'K', bg:'miloRoomNight', who:'DEBBIE', deb2:'deb2-teach', milo:'milo-think',
+          text:'Learning can shape desire.\nThat doesn’t mean the desire itself is a problem.' },
+  k_n2: { line:53, scene:'K', bg:'miloRoomNight', dir:true, who:null, deb2:'deb2-teach', milo:'milo-ashamed',
+          text:'Milo’s voice is very quiet.' },
+  k_n3: { line:54, scene:'K', bg:'miloRoomNight', who:'MILO', deb2:'deb2-teach', milo:'milo-distress',
+          text:'Then why do I still want it gone?' },
+  k_conv: { line:55, scene:'K', bg:'miloRoomNight', dir:true, who:null, deb2:'deb2-worry', milo:'milo-distress',
+            text:'Debbie doesn’t answer.' },
+
+  /* ---------- ACT II · SCENE C — CONFESSION ---------- */
+  l_open: { scene:'L', type:'switch', who:null,
+            sysTitle:'ACT II · SCENE C', roleTitle:'<b>CONFESSION</b>',
+            text:'Later that night' },
+
+  l1: { line:56, scene:'L', bg:'debbieRoom', dir:true, who:null, deb2:'deb2-neutral',
+        text:'Late that night. Debbie’s room, one lamp still on.\nHer jacket hangs on the edge of the bed.' },
+
+  /* ---- SM interlude: the encounter itself ---- */
+  l1b:{ line:56, scene:'L', bg:'debbieRoom', dir:true, who:null, duo:'cg-legs',
+        text:'Milo sinks to his knees at her feet and wraps his arms around her legs.\nShe bends, tilting his chin up to meet her eyes.' },
+  l1c:{ line:56, scene:'L', bg:'debbieRoom', dir:true, who:null, duo:'cg-chin',
+        text:'She sits on the edge of the bed and lifts his chin with a finger.\nHe kneels, hands behind his back, waiting for her.' },
+  l1d:{ line:56, scene:'L', bg:'debbieRoom', dir:true, who:null, duo:'cg-playful',
+        text:'She pinches his chin, smiling.\nHe closes his eyes and smiles back.' },
+
+  l2: { line:57, scene:'L', bg:'debbieRoom', dir:true, who:null, duo:'cg-face',
+        text:'It is over. As Debbie tidies things up, she notices Milo\nwith his head down, shoulders trembling.\nShe comes closer — he is crying.' },
+  l3: { line:58, scene:'L', bg:'debbieRoom', who:'DEBBIE', deb2:'deb2-worry', milo:'milo-ashamed',
+        text:'Was I too hard on you?\nYou could’ve used the safeword.' },
+  l4: { line:59, scene:'L', bg:'debbieRoom', who:'MILO', deb2:'deb2-worry', milo:'milo-ashamed',
+        text:'It wasn’t that. I remembered what people said about me.\nSometimes I still think they’re right.' },
+  l5: { line:60, scene:'L', bg:'debbieRoom', duo:'cg-hug', dir:true, who:null,
+        text:'Debbie holds him.\nMilo hesitates for a moment — then hugs her back.' },
+  l6: { line:61, scene:'L', bg:'debbieRoom', who:'DEBBIE', deb2:'deb2-hip', milo:'milo-shy',
+        text:'You should sleep. I’m going home.' },
+  l7: { line:62, scene:'L', bg:'debbieRoom', duo:'cg-wrist', dir:true, who:null,
+        text:'Milo catches her wrist.\nDebbie’s voice trembles.' },
+  l8: { line:63, scene:'L', bg:'debbieRoom', who:'DEBBIE', duo:'cg-wrist',
+        text:'Let go, Milo.' },
+  l9: { line:64, scene:'L', bg:'debbieRoom', dir:true, who:null, deb2:'deb2-startle', milo:'milo-scared',
+        text:'He doesn’t let go. He kisses her.\nDebbie pushes him away at once.' },
+  l10:{ line:65, scene:'L', bg:'debbieRoom', who:'DEBBIE', deb2:'deb2-stop', milo:'milo-scared',
+        text:'We said no kissing. You crossed a line.' },
+  l11:{ line:66, scene:'L', bg:'debbieRoom', dir:true, who:null, deb2:'deb2-stop', milo:'milo-scared',
+        text:'Milo lets go of her, and steps back.' },
+  l12:{ line:67, scene:'L', bg:'debbieRoom', who:'MILO', deb2:'deb2-stop', milo:'milo-ashamed',
+        text:'I know. I’m sorry. I love you.' },
+  l13:{ line:68, scene:'L', bg:'debbieRoom', who:'DEBBIE', deb2:'deb2-worry', milo:'milo-ashamed',
+        text:'You came to me when you were ashamed. I made you feel safe.\nOf course you’re attached. You associate me with relief—' },
+  l14:{ line:69, scene:'L', bg:'debbieRoom', who:'MILO', deb2:'deb2-worry', milo:'milo-angry',
+        text:'Stop analyzing me.' },
+  l15:{ line:70, scene:'L', bg:'debbieRoom', who:'DEBBIE', deb2:'deb2-teach', milo:'milo-angry',
+        text:'I’m trying to understand.' },
+  l16:{ line:71, scene:'L', bg:'debbieRoom', who:'MILO', deb2:'deb2-teach', milo:'milo-defiant',
+        text:'You’re trying to explain me away.\nI’m not one of Pavlov’s dogs, Debbie. I know how I feel.' },
+  l17:{ line:72, scene:'L', bg:'debbieRoom', who:'DEBBIE', deb2:'deb2-open', milo:'milo-defiant',
+        text:'Do you?' },
+  l18:{ line:73, scene:'L', bg:'debbieRoom', who:'MILO', deb2:'deb2-open', milo:'milo-sigh',
+        text:'I know how conditioning works.\nYou seem to love that word.' },
+  l19:{ line:74, scene:'L', bg:'debbieRoom', dir:true, who:null, deb2:'deb2-open', milo:'milo-pockets',
+        text:'He looks at her, and waits for an answer.' },
+  l20:{ line:75, scene:'L', bg:'debbieRoom', who:'MILO', deb2:'deb2-open', milo:'milo-pockets',
+        text:'Maybe I learned to feel safe with you. So what?\nI still love you.' },
+  l21:{ line:76, scene:'L', bg:null, dir:true, who:null, endAct:true,
+         text:'Debbie doesn’t answer.\n\n— CUT TO BLACK —' }
+};
+
+const FLOW = {
+  start: ['b_look'],
+  b_look: ['feed'],
+  feed:  ['b_end'],
+  b_end: ['end'],
+  end:   ['c_walk'],
+  c_walk: ['c_store'],
+  c_store: ['c_close'],
+  c_close: [],
+  c_freeze: ['d_switch'],
+  d_switch: ['e_office'],
+  e_office: ['e_screen'],
+  e_screen: ['e_freeze'],
+  e_freeze: ['f_intro'],
+  f_intro:  ['f_ad'],
+  f_ad:     ['g_intro'],
+  g_intro:  ['g_choice'],
+  g_choice: ['g_freeze'],
+  g_freeze: ['h_intro1'],
+  h_intro1: ['h_intro2'],
+  h_intro2: ['h_choice'],
+  h_choice: ['h_freeze'],
+  h_freeze: ['i_night'],
+  i_night:  ['i_stand'],
+  i_stand:  [],
+
+  /* ACT II */
+  j_open: ['j1'], j1:['j2'], j2:['j3'], j3:['j4'], j4:['j5'], j5:['j6'], j6:['j7'], j7:['j8'], j8:['j9'],
+  j9:['j10'], j10:['j11'], j11:['j_choice'],
+  j_choice: [], j_fre1:['j_fre2'], j_fre2:['j_fre3'], j_fre3:['j_conv1'],
+  j_beh1:['j_beh2'], j_beh2:['j_beh3'], j_beh3:['j_conv1'],
+  j_conv1:['j_conv2'], j_conv2:['j_fb1'], j_fb1:['j_fb2'], j_fb2:['j_now1'],
+  j_now1:['j_now2'], j_now2:['j_now3'], j_now3:['j_now4'], j_now4:['j_end'], j_end:['k_open'],
+  k_open:['k1'], k1:['k2'], k2:['k3'], k3:['k4'], k4:['k5'], k5:['k6'], k6:['k7'], k7:['k8'], k8:['k9'],
+  k9:['k10'], k10:['k11'], k11:['k12'], k12:['k13'], k13:['k_choice'],
+  k_choice: [], k_m1:['k_m2'], k_m2:['k_m3'], k_m3:['k_conv'],
+  k_n1:['k_n2'], k_n2:['k_n3'], k_n3:['k_conv'], k_conv:['l_open'],
+  l_open:['l1'], l1:['l1b'], l1b:['l1c'], l1c:['l1d'], l1d:['l2'], l2:['l3'], l3:['l4'], l4:['l5'], l5:['l6'], l6:['l7'], l7:['l8'], l8:['l9'],
+  l9:['l10'], l10:['l11'], l11:['l12'], l12:['l13'], l13:['l14'], l14:['l15'], l15:['l16'], l16:['l17'],
+  l17:['l18'], l18:['l19'], l19:['l20'], l20:['l21'], l21:[]
+};
+
+const BG_URL  = { subway:'assets/subway-bg.png', street:'assets/street-bg.png', storeFar:'assets/store-shelf-far.png', storeClose:'assets/store-shelf-close.png', office:'assets/office-bg.png', officeNight:'assets/office-night-bg.png',
+                 miloRoom:'assets/milo-room.png', miloRoomNight:'assets/milo-room-night.png', debbieRoom:'assets/debbie-room.png', flashback:'assets/flashback-room.png', dress:'assets/dress-closeup.png' };
+const SCENE_TAG = { A:'Act 1 · Scene A', B:'Act 1 · Scene B', C:'Act 1 · Scene C', D:'Act 1 · Office', F:'Act 1 · Campaign', J:'Act 2 · Scene A', K:'Act 2 · Scene B', L:'Act 2 · Scene C' };
+
+/* ---------------- Feed posts data ---------------- */
+const POSTS = {
+  moriMorning: {
+    col:'l', img:'assets/feed-mori-morning.png', imgH:300,
+    title:'Slow morning with MORI', sub:'A little sunlight before the rush.',
+    author:'MORI Official', avaBg:'#7ba88e', ava:'M', likes:'1.2k',
+    body:"I've been trying to make my mornings feel a little less rushed.\nA quiet table, some sunlight, and something cold to drink before work."
+  },
+  novaDesk: {
+    col:'r', img:'assets/feed-nova-desk.png', imgH:240,
+    title:'My everyday NOVA cup', sub:'Clean, simple, easy to carry.',
+    author:'NOVA Official', avaBg:'#5b6b7f', ava:'N', likes:'856',
+    body:"I wanted something simple for work.\nIt fits in my bag, holds enough water, and does the job."
+  },
+  novaElevator: {
+    col:'l', img:'assets/feed-nova-elevator.png', imgH:280,
+    title:'Back to office with NOVA', sub:'Minimal, practical, no fuss.',
+    author:'NOVA Official', avaBg:'#5b6b7f', ava:'N', likes:'977',
+    body:"Not flashy, but it fits easily into my routine.\nOne less thing to think about during a busy day."
+  },
+  filler2: {
+    col:'r', ph:'linear-gradient(160deg,#8ea7c2,#4a5b75)', emoji:'🎧', phH:210,
+    title:'Rainy day playlist for the commute', sub:'For slow trains and slow thoughts.',
+    author:'lofi.notes', avaBg:'#b0885e', ava:'♪', likes:'431',
+    body:"Twenty songs, no skips.\nBest enjoyed with headphones and a window seat."
+  },
+  filler1: {
+    col:'l', ph:'linear-gradient(160deg,#d9a45b,#8a5a2e)', emoji:'🍵', phH:190,
+    title:'5-minute stretches before the 9 a.m.', sub:'Your neck will thank you.',
+    author:'desk.wellness', avaBg:'#7f9a6d', ava:'W', likes:'289',
+    body:"No mat, no setup, no excuses.\nThree moves you can do between checking emails and your first meeting."
+  },
+  moriCafe: {
+    col:'r', img:'assets/feed-mori-cafe.png', imgH:260,
+    title:'A softer afternoon with MORI', sub:'Just a small break in the middle of the day.',
+    author:'MORI Official', avaBg:'#7ba88e', ava:'M', likes:'1.1k',
+    body:"Maybe it's the setting, but this cup always seems to fit the mood.\nCoffee shop light, a book, and a quiet half hour."
+  }
+};
+/* column order = feed order (left col / right col) */
+const COL_ORDER = {
+  l: ['moriMorning','novaElevator','filler1'],
+  r: ['novaDesk','filler2','moriCafe']
+};
+
+const $ = id => document.getElementById(id);
+let current = null;
+let history = [];
+let state = { cup: null };   // remembered choice from the Scene C cup question
+let screenReady = false;      // boss chat finished → question may appear
+
+/* ---------------- Boss chat (Scene E) ---------------- */
+const BOSS_MSGS = [
+  'Debbie, good timing. We just got a new client: [BRAND].',
+  'They want to push a new line of everyday cups for young office workers.',
+  'The product itself is fine. The problem is that people do not feel strongly about the brand yet.',
+  'Your task is simple: make [BRAND] feel like the cup people want to pick.',
+  'Let’s start with the campaign direction.'
+];
+function clientBrand() {
+  if (state.cup === 'MORI') return 'NOVA';   // chose MORI → new client is NOVA
+  if (state.cup === 'NOVA') return 'MORI';   // chose NOVA → new client is MORI
+  return 'NOVA';                              // fallback
+}
+/* replace brand placeholders in any displayed text */
+function replaceBrand(s) {
+  return (s || '').replace(/\[CLIENT BRAND\]/gi, clientBrand()).replace(/\[BRAND\]/gi, clientBrand());
+}
+/* the established rival = whichever brand Debbie picked in Scene C */
+function competitorBrand() {
+  return state.cup || 'NOVA';
+}
+/* fill every placeholder: client brand, generic [BRAND], and the Scene C competitor */
+function replaceVars(s) {
+  return (s || '')
+    .replace(/\[CLIENT BRAND\]/gi, clientBrand())
+    .replace(/\[BRAND\]/gi, clientBrand())
+    .replace(/\[COMPETITOR BRAND\]/gi, competitorBrand());
+}
+
+function updateBackBtn() {
+  $('btn-back').classList.toggle('disabled', history.length === 0);
+}
+
+/* ---------------- Typewriter ---------------- */
+let typing = false, typeTimer = null, fullText = '', paused = false;
+function typeText(str, done) {
+  fullText = str; typing = true;
+  $('next-arrow').classList.remove('show');
+  const el = $('text'); el.innerHTML = '';
+  let i = 0;
+  clearInterval(typeTimer);
+  typeTimer = setInterval(() => {
+    if (paused) return;                 // freeze the typewriter while paused
+    el.innerHTML = str.slice(0, ++i).replace(/\n/g,'<br>');
+    if (i >= str.length) { clearInterval(typeTimer); typing = false; done && done(); }
+  }, 42);
+}
+
+/* ---------------- Render node ---------------- */
+function show(id, record = true) {
+  const n = NODES[id];
+  if (record && current !== null && current !== id) history.push(current);
+  current = id;
+  localStorage.setItem('save_node', id);
+  updateBackBtn();
+
+  if (n.type === 'phone') { enterPhone(); return; }
+  exitPhoneUI();
+
+  // reset overlays
+  $('choice').classList.remove('show');
+  $('choice').classList.remove('quad');
+  $('choice-dim').classList.remove('show');
+  $('freeze').classList.remove('show');
+  $('switch').classList.remove('show');
+  $('screen').classList.remove('show');
+  $('screen-hint').classList.remove('show');
+  $('ad').classList.remove('show');
+  $('ad-video').pause();
+  const bn = $('bg-night');
+  if (n.type !== 'nightfall') {                 // hard-reset the night layer (no slow fade-out ghosting)
+    bn.style.transition = 'none';
+    bn.classList.remove('on');
+    bn.style.backgroundImage = 'none';
+    void bn.offsetWidth;
+    bn.style.transition = '';
+  }
+  document.body.classList.toggle('freeze', !!n.freeze);
+  document.body.classList.toggle('system-freeze', !!n.systemFreeze);
+  document.body.classList.toggle('switch', !!n.type && n.type === 'switch');
+  document.body.classList.toggle('screen', !!n.type && n.type === 'screen');
+  document.body.classList.toggle('ad', !!n.type && n.type === 'ad');
+  document.body.classList.toggle('multi', !!n.type && n.type === 'multi');
+  document.body.classList.toggle('nightfall', !!n.type && n.type === 'nightfall');
+
+  document.body.classList.toggle('narration', (!!n.narration || !!n.dir) && !n.freeze && !n.type);
+  document.body.classList.toggle('dir', !!n.dir && !n.freeze && !n.type);
+  document.body.classList.toggle('sprite-left', !!n.spriteLeft);
+  document.body.classList.toggle('sprite-far', !!n.spriteFar);
+  document.body.classList.toggle('stand', !!n.stand);
+  document.body.classList.toggle('dialog-compact', !!n.dialogCompact);
+  document.body.classList.toggle('act2', n.scene === 'J' || n.scene === 'K' || n.scene === 'L');
+  document.body.classList.toggle('fb', !!n.fb);
+  $('scene-tag').textContent = SCENE_TAG[n.scene];
+  if (n.type === 'switch' || n.type === 'ad' || n.type === 'multi' || !n.bg) {
+    $('bg').style.background = '#04060a';          // paint black instantly: no scene flash behind the transition page
+  } else {
+    $('bg').style.backgroundImage = `url("${BG_URL[n.bg]}")`;
+  }
+  $('spDebbie').classList.toggle('hidden', !n.debbie);
+  $('spDebbiePhone').classList.toggle('hidden', !n.debbiePhone);
+  $('spStand').classList.toggle('hidden', !n.stand);
+  const deb2 = $('spDeb2');
+  if (n.deb2) { deb2.src = 'assets/' + n.deb2 + '.png'; deb2.classList.remove('hidden'); } else deb2.classList.add('hidden');
+  const milo = $('spMilo');
+  if (n.milo) {
+    milo.src = 'assets/' + n.milo + '.png'; milo.classList.remove('hidden');
+    milo.classList.toggle('h-low', n.milo === 'milo-floor' || n.milo === 'milo-kneel' || n.milo === 'milo-slump');
+    milo.classList.toggle('h-mid', n.milo === 'milo-sit');
+  } else milo.classList.add('hidden');
+  const duo = $('spDuo');
+  if (n.duo) { duo.src = 'assets/' + n.duo + '.png'; duo.classList.remove('hidden'); } else duo.classList.add('hidden');
+  $('shelf-spot').classList.toggle('show', !!n.spot);
+  const cupOn = !!n.cups;
+  $('cup-mori').classList.toggle('show', cupOn);
+  $('cup-nova').classList.toggle('show', cupOn);
+  if (!cupOn) $('mem-modal').classList.remove('open');
+
+  const tag = $('nametag');
+  tag.classList.toggle('hidden', !n.who);
+  tag.textContent = n.who || '';
+  tag.classList.toggle('mt-milo', n.who === 'MILO');
+  tag.classList.toggle('mt-woman', n.who === 'WOMAN');
+
+  if (n.type === 'switch') { enterSwitch(n); return; }
+  if (n.type === 'screen') { enterScreen(n); return; }
+  if (n.type === 'ad') { enterAd(n); return; }
+  if (n.type === 'multi') { showChoice(n); return; }
+  if (n.type === 'nightfall') { enterNightfall(n); return; }
+
+  if (n.freeze) {
+    $('freeze-text').innerHTML = n.text.split('\n').map(s => `<div class="line">${s}</div>`).join('');
+    $('freeze').classList.add('show');
+    return;
+  }
+
+  $('lineno').textContent = 'L' + n.line;
+  typeText(replaceVars(n.text), () => $('next-arrow').classList.add('show'));
+}
+
+let multiSel = new Set();   // selected indices for the current multi-choice
+function showChoice(n) {
+  $('next-arrow').classList.remove('show');
+  $('screen-hint').classList.remove('show');
+  const multi = n.choice.mode === 'multi';
+  $('choice').classList.toggle('multi', multi);
+  $('choice').classList.toggle('quad', n.choice.mode === 'quad');
+  $('choice-dim').classList.add('show');
+  const q = replaceVars(n.choice.q || '');
+  $('choice-q').textContent = q;
+  const box = $('choice-opts'); box.innerHTML = '';
+  multiSel = new Set();
+  n.choice.options.forEach((o, i) => {
+    const b = document.createElement('div');
+    if (multi) {
+      b.className = 'choice-btn multi';
+      b.innerHTML = `<span class="bx"></span><span class="ct"><b>${String.fromCharCode(65 + i)}：</b>${replaceVars(o.label)}</span>`;
+      b.addEventListener('click', e => {
+        e.stopPropagation();
+        b.classList.toggle('sel');
+        if (b.classList.contains('sel')) multiSel.add(i); else multiSel.delete(i);
+      });
+    } else if (n.choice.mode === 'quad') {
+      b.className = 'choice-btn quad';
+      b.innerHTML = `<span class="ck">${String.fromCharCode(65 + i)}</span><span class="ct">${replaceVars(o.label)}</span>`;
+      b.addEventListener('click', e => { e.stopPropagation(); choose(o.goto, o.value); });
+    } else {
+      b.className = 'choice-btn';
+      b.textContent = replaceVars(o.label);
+      b.addEventListener('click', e => { e.stopPropagation(); choose(o.goto, o.value); });
+    }
+    box.appendChild(b);
+  });
+  if (multi) {
+    const cf = document.createElement('button');
+    cf.className = 'choice-confirm';
+    cf.textContent = 'CONFIRM';
+    cf.addEventListener('click', e => { e.stopPropagation(); confirmChoice(n); });
+    box.appendChild(cf);
+  }
+  $('choice').classList.add('show');
+}
+function confirmChoice(n) {
+  $('choice').classList.remove('show');
+  $('choice-dim').classList.remove('show');
+  document.body.classList.remove('multi');
+  const next = FLOW[current];
+  if (next && next.length) show(next[0]);
+}
+function choose(target, value) {
+  if (value) state.cup = value;
+  $('choice').classList.remove('show');
+  $('choice-dim').classList.remove('show');
+  show(target);
+}
+
+/* ---------------- Scene D: ROLE SWITCH transition ---------------- */
+function playChime() {
+  try {
+    const ac = new (window.AudioContext || window.webkitAudioContext)();
+    const now = ac.currentTime;
+    [[880, 0], [1320, 0.12]].forEach(([f, t]) => {
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.type = 'sine'; o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, now + t);
+      g.gain.exponentialRampToValueAtTime(0.18, now + t + 0.03);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + t + 0.5);
+      o.connect(g); g.connect(ac.destination);
+      o.start(now + t); o.stop(now + t + 0.55);
+    });
+  } catch (e) {}
+}
+function enterSwitch(n) {
+  /* bg is already solid black (painted in show()); the title card fades in directly */
+  $('scene-tag').textContent = SCENE_TAG[n.scene] || SCENE_TAG.D;
+  $('sw-sys').textContent = n.sysTitle || 'SYSTEM · ROLE UPDATE';
+  $('sw-role').innerHTML = n.roleTitle || 'ROLE <b>SWITCH</b>';
+  $('switch-text').innerHTML = n.text.split('\n').map(s => `<div>${s}</div>`).join('');
+  $('switch').classList.add('show');
+  playChime();
+}
+
+/* ---------------- Scene E: work-mode screen ---------------- */
+function enterScreen(n) {
+  screenReady = false;
+  $('scene-tag').textContent = SCENE_TAG.D;
+  $('lineno').textContent = 'L' + n.line;
+  if (n.skipChat) {                 // Scene H style: no boss chat, straight to the choice over the office
+    screenReady = true;
+    showChoice(n);
+    return;
+  }
+  $('bg').style.background = 'radial-gradient(120% 120% at 80% 10%, #2a3550, #11161f 72%)';
+  $('screen').classList.add('show');
+  buildChat();
+}
+
+/* ---------------- Scene F: client-brand ad mockup ---------------- */
+function enterAd(n) {
+  $('scene-tag').textContent = SCENE_TAG.F;
+  const v = $('ad-video');
+  v.poster = 'assets/ad-' + clientBrand() + '-f1.png';   // instant first-frame while the video buffers
+  v.src = 'assets/ad-' + clientBrand() + '.mp4';   // the new client = opposite of Debbie's Scene C pick
+  v.load();
+  const p = v.play();
+  if (p && p.catch) p.catch(() => {});             // ignore autoplay rejections; muted+loop should allow it
+  $('ad').classList.add('show');
+}
+
+/* ---------------- Scene I: day -> night crossfade, then the act finale ---------------- */
+let nightReady = false;
+function enterNightfall(n) {
+  nightReady = false;
+  $('lineno').textContent = 'L' + n.line;
+  $('next-arrow').classList.remove('show');
+  const bn = $('bg-night');
+  bn.style.backgroundImage = `url("${BG_URL.officeNight}")`;
+  requestAnimationFrame(() => requestAnimationFrame(() => bn.classList.add('on')));
+  clearTimeout(enterNightfall._t);
+  enterNightfall._t = setTimeout(() => {
+    if (current !== 'i_night') return;             // moved on early (debug jump) — don't stomp the new bg
+    $('bg').style.backgroundImage = `url("${BG_URL.officeNight}")`;   // commit the night under the layer
+    bn.style.transition = 'none';
+    bn.classList.remove('on');
+    bn.style.backgroundImage = 'none';
+    void bn.offsetWidth;
+    bn.style.transition = '';
+    nightReady = true;
+    $('next-arrow').classList.add('show');
+  }, 2900);
+}
+function buildChat() {
+  const brand = clientBrand();
+  const body = $('chat-body'); body.innerHTML = '';
+  const msgs = BOSS_MSGS.map(m => m.replace('[BRAND]', brand));
+  let i = 0;
+  (function step() {
+    if (i >= msgs.length) {
+      const ack = document.createElement('div');
+      ack.className = 'msg debbie';
+      ack.textContent = 'On it, Boss. Let me think about the direction.';
+      body.appendChild(ack); body.scrollTop = body.scrollHeight;
+      screenReady = true;
+      setTimeout(() => $('screen-hint').classList.add('show'), 300);
+      return;
+    }
+    const ty = document.createElement('div');
+    ty.className = 'typing'; ty.innerHTML = '<i></i><i></i><i></i>';
+    body.appendChild(ty); body.scrollTop = body.scrollHeight;
+    setTimeout(() => {
+      ty.remove();
+      const m = document.createElement('div');
+      m.className = 'msg boss'; m.textContent = msgs[i];
+      body.appendChild(m); body.scrollTop = body.scrollHeight;
+      i++; setTimeout(step, 560);
+    }, 900);
+  })();
+}
+
+/* ---------------- Phone mode ---------------- */
+function enterPhone() {
+  document.body.classList.add('phone-mode');
+  document.body.classList.remove('narration');
+  $('scene-tag').textContent = SCENE_TAG.B;
+  $('bg').style.backgroundImage = `url("${BG_URL.subway}")`;
+  $('spDebbie').classList.add('hidden');
+  $('spDebbiePhone').classList.add('hidden');
+  buildFeed();
+  $('p-detail').classList.remove('open');
+  $('p-feed').scrollTop = 0;
+  $('swipe-hint').classList.remove('show');
+  $('lock-pill').classList.remove('show');
+  clearTimeout(enterPhone._t1); clearTimeout(enterPhone._t2);
+  const detailOpen = () => $('p-detail').classList.contains('open');
+  enterPhone._t1 = setTimeout(() => { if (!detailOpen()) $('swipe-hint').classList.add('show'); }, 1400);
+  enterPhone._t2 = setTimeout(() => { if (!detailOpen()) $('lock-pill').classList.add('show'); }, 2600);
+  if (new URLSearchParams(location.search).get('scroll'))   // debug jump to 2nd screen
+    setTimeout(() => { $('p-feed').scrollTop = 9999; }, 120);
+  const dbgPost = new URLSearchParams(location.search).get('post');  // debug: open a post
+  if (dbgPost && POSTS[dbgPost]) setTimeout(() => openDetail(POSTS[dbgPost]), 200);
+  $('p-feed').onscroll = () => {
+    if ($('p-feed').scrollTop > 160) {
+      $('swipe-hint').classList.remove('show');
+      $('lock-pill').classList.add('show');
+    }
+  };
+}
+function exitPhoneUI() {
+  document.body.classList.remove('phone-mode');
+  $('swipe-hint').classList.remove('show');
+  $('lock-pill').classList.remove('show');
+}
+
+function buildFeed() {
+  ['l','r'].forEach(side => {
+    const col = $('col-' + side);
+    col.innerHTML = '';
+    COL_ORDER[side].forEach(key => col.appendChild(makeCard(POSTS[key], key)));
+  });
+}
+function makeCard(p, key, still) {
+  const card = document.createElement('div');
+  card.className = 'p-card';
+  let media;
+  if (p.img) {
+    media = document.createElement('img');
+    media.className = 'cover';
+    media.src = p.img;
+    media.style.height = p.imgH + 'px';
+  } else {
+    media = document.createElement('div');
+    media.className = 'cover-ph';
+    media.style.background = p.ph;
+    media.style.height = p.phH + 'px';
+    media.textContent = p.emoji;
+  }
+  const body = document.createElement('div');
+  body.className = 'c-body';
+  body.innerHTML = `<div class="c-title">${p.title}</div>
+    <div class="c-foot">
+      <div class="c-ava" style="background:${p.avaBg}">${p.ava}</div>
+      <div class="c-name">${p.author}</div>
+      <div class="c-like">${p.likes}</div>
+    </div>`;
+  card.appendChild(media); card.appendChild(body);
+  if (!still) card.addEventListener('click', e => { e.stopPropagation(); openDetail(p); });
+  return card;
+}
+
+/* ---------------- Scene C: cup memory recall ---------------- */
+const MEM_KEYS = { MORI: ['moriMorning', 'moriCafe'], NOVA: ['novaDesk', 'novaElevator'] };
+function openMemory(brand) {
+  const keys = MEM_KEYS[brand] || [];
+  const mh = $('mem-brand');
+  mh.textContent = brand === 'MORI' ? 'MORI' : 'NOVA';
+  mh.style.color = brand === 'MORI' ? '#ffd98a' : '#9ad7ff';
+  const box = $('mem-cards'); box.innerHTML = '';
+  keys.forEach(k => box.appendChild(makeCard(POSTS[k], k, true)));
+  $('mem-modal').classList.add('open');
+}
+function closeMemory() { $('mem-modal').classList.remove('open'); }
+
+function openDetail(p) {
+  $('swipe-hint').classList.remove('show');
+  $('lock-pill').classList.remove('show');
+  $('d-h1').textContent = p.title;
+  $('d-name').textContent = p.author;
+  $('d-body').textContent = p.body;
+  const ava = $('d-ava');
+  ava.style.background = p.avaBg; ava.textContent = p.ava;
+  const wrap = $('d-img');
+  wrap.innerHTML = '';
+  if (p.img) {
+    const img = document.createElement('img'); img.src = p.img; wrap.appendChild(img);
+  } else {
+    const ph = document.createElement('div'); ph.className = 'cover-ph';
+    ph.style.background = p.ph; ph.textContent = p.emoji; wrap.appendChild(ph);
+  }
+  $('p-detail').classList.add('open');
+}
+function closeDetail(e) {
+  e.stopPropagation();
+  $('p-detail').classList.remove('open');
+  if ($('p-feed').scrollTop > 160) $('lock-pill').classList.add('show');
+}
+
+function lockPhone(e) {
+  e.stopPropagation();
+  const f = $('fade'); f.classList.add('on');
+  setTimeout(() => { f.classList.remove('on'); show('b_end'); }, 500);
+}
+
+/* ---------------- Pause / screen lock ---------------- */
+function togglePause(e) {
+  if (e) e.stopPropagation();
+  paused = !paused;
+  document.body.classList.toggle('paused', paused);
+  $('pause-lock').classList.toggle('show', paused);
+  $('pause-btn').textContent = paused ? '\u25B6' : '\u23F8';   // ▶ / ⏸
+}
+
+/* ---------------- Back / advance ---------------- */
+function back(e) {
+  e.stopPropagation();
+  if (paused) return;                     // locked while paused
+  if (history.length === 0) return;
+  const prev = history.pop();
+  const f = $('fade'); f.classList.add('on');
+  setTimeout(() => { f.classList.remove('on'); show(prev, false); }, 450);
+}
+
+function advance() {
+  if (paused) return;                     // locked while paused
+  const n = NODES[current];
+  if (!n || n.type === 'phone') return;   // feed interacts, never auto-advances
+  if (n.type === 'screen' && !screenReady) return;  // wait until the boss chat finishes
+  if (n.type === 'nightfall' && !nightReady) return; // let the sunset finish before moving on
+  const next = FLOW[current];
+  if (typing) {                            // a tap while typing finishes the text first — never skips to the choice
+    clearInterval(typeTimer);
+    $('text').innerHTML = fullText.replace(/\n/g,'<br>');
+    typing = false;
+    $('next-arrow').classList.add('show');
+    return;
+  }
+  if (n.choice) {                          // choice appears only on the next tap, after the text is fully shown
+    if (!$('choice').classList.contains('show')) showChoice(n);
+    return;
+  }
+  if (n.type === 'switch') {                // soft fade out of the black transition
+    const f = $('fade'); f.classList.add('on');
+    setTimeout(() => { f.classList.remove('on'); show(next[0]); }, 480);
+    return;
+  }
+  if (n.endAct) {                             // Act finale: slow fade to black, then the next act / home
+    const f = $('fade'); f.classList.add('slow'); f.classList.add('on');
+    setTimeout(() => location.href = n.actNext ? 'game.html?node=' + n.actNext : 'index.html', 2600);
+    return;
+  }
+  if (next && next.length) show(next[0]);
+  else {
+    const f = $('fade'); f.classList.add('on');
+    setTimeout(() => location.href = 'index.html', 520);
+  }
+}
+
+function restart(e) { e.stopPropagation(); localStorage.removeItem('save_node');
+  history = [];
+  const f = $('fade'); f.classList.add('on');
+  setTimeout(() => { f.classList.remove('on'); show('start'); }, 480); }
+function backHome(e) { e.stopPropagation(); location.href = 'index.html'; }
+
+/* ---------------- Stage scaling ---------------- */
+function fit() {
+  const s = Math.min(innerWidth / 1280, innerHeight / 720);
+  $('stage').style.transform = `translate(-50%, -50%) scale(${s})`;
+}
+addEventListener('resize', fit); fit();
+
+/* ---------------- Input ---------------- */
+$('stage').addEventListener('click', advance);
+
+addEventListener('keydown', ev => {
+  if (ev.code === 'KeyP') { ev.preventDefault(); togglePause(); return; }
+  if (paused) { ev.preventDefault(); return; }   // ignore all other input while locked
+  if (ev.code === 'Space' || ev.code === 'Enter') { ev.preventDefault(); advance(); }
+  if (ev.code === 'Backspace') { ev.preventDefault(); back({ stopPropagation(){} }); }
+});
+
+/* ---------------- Start ---------------- */
+show(new URLSearchParams(location.search).get('node') || localStorage.getItem('save_node') || 'start');
+
+/* debug: ?node=X&choice=1 opens the node's choice panel immediately */
+const dbgChoice = new URLSearchParams(location.search).get('choice');
+if (dbgChoice) {
+  const cn = NODES[current];
+  if (cn && cn.choice) setTimeout(() => showChoice(cn), 800);
+}
+</script>
+</body>
+</html>

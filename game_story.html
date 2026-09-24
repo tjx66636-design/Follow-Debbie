@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Interactive Scene — Test Test Test</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    background: #0b0c10;
+    overflow: hidden;
+    font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+    user-select: none;
+  }
+
+  /* ===== 16:9 stage ===== */
+  #stage {
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 1280px; height: 720px;
+    transform: translate(-50%, -50%);
+    transform-origin: center;
+    overflow: hidden;
+    background: #000;
+    cursor: pointer;
+  }
+
+  /* ===== backgrounds (crossfade) ===== */
+  #bg, #bg2 {
+    position: absolute; inset: 0;
+    background: center/cover no-repeat;
+  }
+  #bg { background-image: url("assets/office-bg.png"); }
+  #bg2 { opacity: 0; transition: opacity .5s ease; z-index: 1; }
+
+  /* ===== character sprite ===== */
+  #sprite {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    height: 92%;
+    transform: translateX(-38%);
+    filter: drop-shadow(0 10px 26px rgba(0,0,0,.45));
+    transition: opacity .45s ease;
+    pointer-events: none;
+    z-index: 5;
+  }
+  #sprite.hidden { opacity: 0; }
+
+  /* ===== top bar ===== */
+  #topbar {
+    position: absolute; top: 0; left: 0; right: 0;
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 20px;
+    z-index: 20;
+  }
+  #scene-tag {
+    font-size: 14px; letter-spacing: 4px;
+    color: rgba(255,255,255,.85);
+    background: rgba(12,14,20,.5);
+    border: 1px solid rgba(255,255,255,.18);
+    padding: 6px 16px;
+    border-radius: 3px;
+    backdrop-filter: blur(4px);
+  }
+  .top-actions { display: flex; gap: 10px; }
+  .top-btn {
+    font-size: 13px; letter-spacing: 3px;
+    color: rgba(255,255,255,.75);
+    background: rgba(12,14,20,.5);
+    border: 1px solid rgba(255,255,255,.18);
+    padding: 6px 14px;
+    border-radius: 3px;
+    cursor: pointer;
+    backdrop-filter: blur(4px);
+    transition: all .2s;
+  }
+  .top-btn:hover { color:#1a1d26; background: #d9a45b; border-color:#d9a45b; }
+  .top-btn.disabled { opacity: .3; cursor: default; pointer-events: none; }
+  .top-btn.disabled:hover { color: rgba(255,255,255,.75); background: rgba(12,14,20,.5); border-color: rgba(255,255,255,.18); }
+
+  /* ===== name tag ===== */
+  #nametag {
+    position: absolute;
+    left: 96px; bottom: 218px;
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 9px 26px 9px 20px;
+    background: linear-gradient(135deg, rgba(14,16,24,.92), rgba(24,28,40,.88));
+    border: 1px solid rgba(217,164,91,.4);
+    border-left: 3px solid #d9a45b;
+    border-radius: 3px;
+    color: #f5ead6;
+    font-size: 19px;
+    letter-spacing: 3px;
+    z-index: 15;
+    backdrop-filter: blur(6px);
+    box-shadow: 0 4px 18px rgba(0,0,0,.4);
+    transition: opacity .3s;
+  }
+  #nametag::before { content: "✦"; color: #d9a45b; font-size: 15px; }
+  #nametag.hidden { opacity: 0; }
+
+  /* ===== dialog box ===== */
+  #dialog {
+    position: absolute;
+    left: 60px; right: 60px; bottom: 40px;
+    min-height: 150px;
+    padding: 24px 34px 46px;
+    background: linear-gradient(to bottom, rgba(13,15,22,.88), rgba(20,23,33,.92));
+    border: 1px solid rgba(255,255,255,.14);
+    border-radius: 8px;
+    backdrop-filter: blur(6px);
+    box-shadow: 0 8px 34px rgba(0,0,0,.5);
+    z-index: 10;
+  }
+  #text {
+    font-size: 21px;
+    line-height: 1.9;
+    color: #f2efe9;
+    letter-spacing: .5px;
+    min-height: 76px;
+  }
+
+  /* next arrow */
+  #next-arrow {
+    position: absolute;
+    right: 30px; bottom: 16px;
+    color: #d9a45b;
+    font-size: 18px;
+    letter-spacing: 2px;
+    animation: bounce 1.1s ease-in-out infinite;
+    opacity: 0;
+    transition: opacity .3s;
+  }
+  #next-arrow.show { opacity: 1; }
+  @keyframes bounce { 0%,100% { transform: translateY(0);} 50% { transform: translateY(5px);} }
+
+  /* ===== choice layer ===== */
+  #choices {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    justify-content: center; align-items: center; gap: 22px;
+    background: rgba(6,8,12,.45);
+    z-index: 30;
+    opacity: 0; pointer-events: none;
+    transition: opacity .4s ease;
+  }
+  #choices.show { opacity: 1; pointer-events: auto; }
+  #choices .tip {
+    font-size: 15px; letter-spacing: 3px;
+    color: rgba(255,255,255,.7);
+    margin-bottom: 6px;
+  }
+  .choice-btn {
+    width: 560px;
+    padding: 16px 24px;
+    text-align: center;
+    font-size: 18px;
+    letter-spacing: 1px;
+    color: #f0e6d6;
+    background: rgba(14,16,24,.82);
+    border: 1px solid rgba(217,164,91,.5);
+    border-radius: 6px;
+    cursor: pointer;
+    backdrop-filter: blur(6px);
+    transition: all .22s ease;
+    transform: translateY(14px);
+    opacity: 0;
+  }
+  #choices.show .choice-btn { transform: none; opacity: 1; }
+  #choices.show .choice-btn:nth-child(3) { transition-delay: .08s; }
+  #choices.show .choice-btn:nth-child(4) { transition-delay: .16s; }
+  .choice-btn:hover {
+    background: rgba(217,164,91,.16);
+    border-color: #d9a45b;
+    box-shadow: 0 0 22px rgba(217,164,91,.35);
+  }
+
+  /* ===== settings overlay ===== */
+  #settings {
+    position: absolute; inset: 0;
+    display: flex; justify-content: center; align-items: center;
+    background: rgba(6,8,12,.55);
+    z-index: 40;
+    opacity: 0; pointer-events: none;
+    transition: opacity .3s ease;
+  }
+  #settings.show { opacity: 1; pointer-events: auto; }
+  .settings-panel {
+    width: 420px;
+    padding: 30px 34px 26px;
+    background: linear-gradient(to bottom, rgba(16,18,26,.96), rgba(24,28,40,.94));
+    border: 1px solid rgba(217,164,91,.45);
+    border-radius: 8px;
+    box-shadow: 0 10px 40px rgba(0,0,0,.6);
+  }
+  .settings-panel h3 {
+    color: #f5ead6; font-size: 20px; letter-spacing: 4px;
+    text-align: center; margin-bottom: 22px;
+  }
+  .settings-row {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 18px;
+  }
+  .settings-row .label { color: rgba(240,230,214,.8); font-size: 15px; letter-spacing: 2px; }
+  .set-group { display: flex; gap: 8px; }
+  .set-opt {
+    padding: 7px 18px;
+    font-size: 14px; letter-spacing: 1px;
+    color: rgba(255,255,255,.7);
+    background: rgba(12,14,20,.6);
+    border: 1px solid rgba(255,255,255,.2);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all .2s;
+  }
+  .set-opt:hover { border-color: #d9a45b; }
+  .set-opt.active { color: #1a1d26; background: #d9a45b; border-color: #d9a45b; }
+  .settings-close {
+    width: 100%; margin-top: 8px;
+    padding: 11px 0;
+    text-align: center;
+    font-size: 15px; letter-spacing: 4px;
+    color: #f0e6d6;
+    background: rgba(217,164,91,.12);
+    border: 1px solid rgba(217,164,91,.5);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all .2s;
+  }
+  .settings-close:hover { background: #d9a45b; color: #1a1d26; }
+
+  /* narration mode: centered slim box, sprite dimmed */
+  body.narration #dialog { left: 280px; right: 280px; bottom: 120px; min-height: 110px; }
+  body.narration #text { text-align: center; color: #e8e2d5; font-size: 20px; }
+  body.narration #sprite { opacity: .25; }
+
+  /* fade transition */
+  #fade {
+    position: absolute; inset: 0;
+    background: #000;
+    opacity: 0; pointer-events: none;
+    transition: opacity .5s ease;
+    z-index: 90;
+  }
+  #fade.on { opacity: 1; }
+</style>
+</head>
+<body>
+  <div id="stage">
+    <div id="bg"></div>
+    <div id="bg2"></div>
+    <img id="sprite" src="assets/heroine.png" alt="">
+
+    <div id="topbar">
+      <div id="scene-tag">Ch.1 · The Pitch</div>
+      <div class="top-actions">
+        <div class="top-btn" id="btn-back" onclick="back(event)">Back</div>
+        <div class="top-btn" onclick="restart(event)">Restart</div>
+        <div class="top-btn" onclick="openSettings(event)">Settings</div>
+        <div class="top-btn" onclick="backHome(event)">Home</div>
+      </div>
+    </div>
+
+    <div id="nametag" class="hidden">Debbie</div>
+
+    <div id="dialog">
+      <div id="text"></div>
+      <div id="next-arrow">▼ Next</div>
+    </div>
+
+    <div id="choices">
+      <div class="tip">Make a choice</div>
+      <div class="choice-btn" id="c0" onclick="pick(0,event)"></div>
+      <div class="choice-btn" id="c1" onclick="pick(1,event)"></div>
+    </div>
+
+    <div id="settings" onclick="closeSettings(event)">
+      <div class="settings-panel" onclick="event.stopPropagation()">
+        <h3>SETTINGS</h3>
+        <div class="settings-row">
+          <div class="label">Text Speed</div>
+          <div class="set-group">
+            <div class="set-opt active" id="spd-normal" onclick="setSpeed(42,0)">Normal</div>
+            <div class="set-opt" id="spd-fast" onclick="setSpeed(12,1)">Fast</div>
+          </div>
+        </div>
+        <div class="settings-close" onclick="closeSettings(event)">Close</div>
+      </div>
+    </div>
+
+    <div id="fade"></div>
+  </div>
+
+<script>
+/* ================================================================
+ *  STORY DATA — Chapter 1: The Pitch
+ *  Debbie, a marketing planner at Halcyon Ads, has one night to
+ *  save the Verde Cosmetics account. Player choices shape her day.
+ *
+ *  Node fields:
+ *    type  : 'say' | 'choice'
+ *    who   : speaker name (narration:true = narration line)
+ *    sprite: true/false — show or hide Debbie (omit = keep state)
+ *    bg    : 'day' | 'night' — switch scene background (omit = keep)
+ *    options: for choice nodes (label + goto)
+ * ================================================================ */
+const NODES = {
+  /* --- morning --- */
+  start:  { type:'say', narration:true, bg:'day', sprite:false,
+            text:"8:47 AM. Halcyon Ads, 21st floor. Debbie's third coffee is already cold beside her keyboard." },
+  n1:     { type:'say', who:'Debbie', sprite:true,
+            text:"Okay, Debbie. Client meeting in one hour. You've got this. You always got this." },
+  n2:     { type:'say', who:'Nina',
+            text:"Morning! Did you see Marcus's message? War room. Everyone. Now." },
+  n3:     { type:'say', who:'Debbie', sprite:true,
+            text:"The Verde pitch?! That's TODAY? I thought we had until Friday..." },
+  n4:     { type:'say', narration:true,
+            text:"— In the war room, the air smells like burnt coffee and quiet panic. —" },
+  n5:     { type:'say', who:'Marcus',
+            text:"Team — Verde hates our draft. They're ready to pull the account. One pitch left. Tomorrow, 9 AM." },
+  n6:     { type:'say', who:'Debbie', sprite:true,
+            text:"One night to rebuild an entire campaign. Perfect. Just... perfect." },
+
+  /* --- choice 1: strategy --- */
+  branch1:{ type:'choice', q:'How do you lead the rescue?', options:[
+              { label:'Go bold — rebuild the campaign around a risky new idea', goto:'bb1' },
+              { label:'Play safe — polish the existing draft overnight',        goto:'bs1' } ] },
+
+  /* --- bold path --- */
+  bb1:    { type:'say', who:'Nina',
+            text:"Bold? At a time like this? ...Okay. I'm in. But if it bombs, you buy my coffee for a month." },
+  bb2:    { type:'say', who:'Debbie', sprite:true,
+            text:"Safe got us into this. Verde doesn't need polish — they need a jolt. We scrap the tagline. All of it." },
+  bb3:    { type:'say', narration:true,
+            text:"— The morning disappears as the old deck is torn apart. It hurts. It feels right. —" },
+  bb4:    { type:'say', who:'Marcus',
+            text:"I don't hate it. I don't love it either. If this fails, it lands on both of us, Debbie." },
+  bb5:    { type:'say', who:'Debbie', sprite:true,
+            text:"Then we make sure it doesn't fail." },
+
+  /* --- choice 2a: client call (bold) --- */
+  branch2a:{ type:'choice', q:'The client calls early. How do you open?', options:[
+              { label:'Lead with the new tagline: "Beauty that never asks permission."', goto:'c1a' },
+              { label:'Warm them up with small talk first.',                              goto:'c1b' } ] },
+  c1a:    { type:'say', who:'Ms. Vance', text:"...That line. Say it again. Slowly." },
+  c1a2:   { type:'say', who:'Debbie', sprite:true,
+            text:'"Beauty that never asks permission." That\'s not a slogan, Ms. Vance. It\'s a promise we\'d like to keep.' },
+  c1b:    { type:'say', who:'Ms. Vance', text:"Your team sounds different today, Debbie. Looser. What have you been cooking over there?" },
+  c1b2:   { type:'say', who:'Debbie', sprite:true,
+            text:"We've been listening. And rebuilding — around your data, and around who Verde actually is." },
+
+  /* --- safe path --- */
+  bs1:    { type:'say', who:'Nina',
+            text:"Smart. Steady hands keep accounts. I'll pull the analytics for the revision." },
+  bs2:    { type:'say', who:'Debbie', sprite:true,
+            text:"We keep the structure and sharpen every line. No heroics tonight. Just excellence." },
+  bs3:    { type:'say', who:'Marcus',
+            text:"Sensible. This is exactly why I trust you with Verde." },
+
+  /* --- choice 2b: client call (safe) --- */
+  branch2b:{ type:'choice', q:'On the call, Verde asks: "So what\'s NEW in this draft?"', options:[
+              { label:'Tell the truth: "We listened — and rebuilt it around your data."', goto:'c2a' },
+              { label:'Sell it hard: "A complete creative overhaul, frame one."',          goto:'c2b' } ] },
+  c2a:    { type:'say', who:'Ms. Vance', text:"Honesty. How refreshing. Continue, Ms. Debbie." },
+  c2a2:   { type:'say', who:'Debbie', sprite:true,
+            text:"Every chart in the new deck starts from your feedback. Judge us on that." },
+  c2b:    { type:'say', who:'Ms. Vance', text:'A complete overhaul, hmm? Your last "overhaul" cost us a season. You\'re sure?' },
+  c2b2:   { type:'say', who:'Debbie', sprite:true,
+            text:"I'm sure. And by nine tomorrow, you will be too." },
+
+  /* --- afternoon (merge) --- */
+  mid:    { type:'say', narration:true, bg:'day',
+            text:"— By late afternoon, the deck is rebuilt and Verde sounds... interested. But tomorrow still feels like a cliff edge. —" },
+  n7:     { type:'say', who:'Nina',
+            text:"Debbie, you look wrecked. Go home. I can finish the deck tonight, seriously." },
+
+  /* --- choice 3: the night --- */
+  branch3:{ type:'choice', q:"It's 7 PM. What do you do?", options:[
+              { label:'Stay and finish it yourself — this pitch is yours.', goto:'st1' },
+              { label:'Trust Nina and go home.',                            goto:'hm1' } ] },
+
+  /* --- stay path (night) --- */
+  st1:    { type:'say', narration:true, bg:'night',
+            text:"— 9:40 PM. The office is empty except for one desk lamp and one stubborn planner. —" },
+  st2:    { type:'say', who:'Debbie', sprite:true, bg:'night',
+            text:"Slide fourteen... no. Twelve. The story has to breathe, not shout." },
+  st3:    { type:'say', who:'Nina',
+            text:'You\'re still here?! ...Fine. I\'m staying too. Someone has to guard you from hyphenating "re-imagine" wrong.' },
+  st4:    { type:'say', who:'Debbie', sprite:true, text:"Deal. Last one out buys breakfast." },
+  st5:    { type:'say', narration:true,
+            text:"— The city hums below. Somewhere around slide nineteen, the pitch finally becomes theirs. —" },
+
+  /* --- home path (night) --- */
+  hm1:    { type:'say', narration:true, bg:'night',
+            text:'— The city lights smear past the train window. Her phone buzzes: "Deck\'s done. It\'s good. Sleep, boss." — Nina' },
+  hm2:    { type:'say', who:'Debbie', sprite:true, bg:'night',
+            text:"...She even fixed my slide numbers. I owe her breakfast. Maybe two." },
+  hm3:    { type:'say', narration:true,
+            text:"— For the first time in weeks, Debbie is asleep before midnight. —" },
+
+  /* --- finale (merge, next morning) --- */
+  fin1:   { type:'say', narration:true, bg:'day',
+            text:"— 9:00 AM. The Verde team files into the conference room, faces unreadable. —" },
+  fin2:   { type:'say', who:'Debbie', sprite:true,
+            text:"Good morning. Forget the draft for a second. Let's talk about who Verde really is — and who Verde could be." },
+  fin3:   { type:'say', narration:true,
+            text:"— Twenty minutes later, the room is very quiet. Then, Verde's director smiles. —" },
+  fin4:   { type:'say', who:'Ms. Vance',
+            text:"We walked in ready to say goodbye. Instead... let's talk about next quarter." },
+  fin5:   { type:'say', who:'Nina', text:"WE DID IT. Debbie!! I'm framing this deck." },
+  fin6:   { type:'say', who:'Marcus', text:"Not bad, planner. Not bad at all. Drinks are on me tonight." },
+  end:    { type:'say', narration:true, text:"— End of Chapter 1: The Pitch —" }
+};
+
+/* linear progression table (choice nodes jump via pick) */
+const FLOW = {
+  start:['n1'], n1:['n2'], n2:['n3'], n3:['n4'], n4:['n5'], n5:['n6'], n6:['branch1'],
+  bb1:['bb2'], bb2:['bb3'], bb3:['bb4'], bb4:['bb5'], bb5:['branch2a'],
+  c1a:['c1a2'], c1b:['c1b2'], c1a2:['mid'], c1b2:['mid'],
+  bs1:['bs2'], bs2:['bs3'], bs3:['branch2b'],
+  c2a:['c2a2'], c2b:['c2b2'], c2a2:['mid'], c2b2:['mid'],
+  mid:['n7'], n7:['branch3'],
+  st1:['st2'], st2:['st3'], st3:['st4'], st4:['st5'], st5:['fin1'],
+  hm1:['hm2'], hm2:['hm3'], hm3:['fin1'],
+  fin1:['fin2'], fin2:['fin3'], fin3:['fin4'], fin4:['fin5'], fin5:['fin6'], fin6:['end'],
+  end:[]
+};
+
+const BG_URLS = { day:'assets/office-bg.png', night:'assets/night-bg.png' };
+
+const $ = id => document.getElementById(id);
+let current = null;
+let history = [];      // visited-node stack for Back
+let lastBg = 'day';
+let speedMs = 42;      // typewriter speed
+
+/* ---- settings ---- */
+function setSpeed(ms, idx) {
+  speedMs = ms;
+  $('spd-normal').classList.toggle('active', idx === 0);
+  $('spd-fast').classList.toggle('active', idx === 1);
+  clearInterval(typeTimer);
+  if (typing) typeText(fullText, () => $('next-arrow').classList.add('show'));
+}
+function openSettings(e) { e.stopPropagation(); $('settings').classList.add('show'); }
+function closeSettings(e) { if (e) e.stopPropagation(); $('settings').classList.remove('show'); }
+
+function updateBackBtn() {
+  $('btn-back').classList.toggle('disabled', history.length === 0);
+}
+
+/* ---- background crossfade ---- */
+function setBg(name) {
+  if (!name || name === lastBg) return;
+  lastBg = name;
+  const b2 = $('bg2');
+  b2.style.backgroundImage = `url("${BG_URLS[name]}")`;
+  b2.style.opacity = 1;
+  setTimeout(() => {
+    $('bg').style.backgroundImage = `url("${BG_URLS[name]}")`;
+    b2.style.opacity = 0;
+  }, 520);
+}
+
+/* ---- typewriter ---- */
+let typing = false, typeTimer = null, fullText = '';
+function typeText(str, done) {
+  fullText = str; typing = true;
+  $('next-arrow').classList.remove('show');
+  const el = $('text'); el.innerHTML = '';
+  let i = 0;
+  clearInterval(typeTimer);
+  typeTimer = setInterval(() => {
+    el.innerHTML = str.slice(0, ++i).replace(/\n/g,'<br>');
+    if (i >= str.length) { clearInterval(typeTimer); typing = false; done && done(); }
+  }, speedMs);
+}
+
+/* ---- node rendering ---- */
+function show(id, record = true) {
+  const n = NODES[id];
+  if (record && current !== null && current !== id) history.push(current);
+  current = id;
+  localStorage.setItem('save_node', id); // autosave
+  updateBackBtn();
+  setBg(n.bg);
+
+  // sprite rule: explicit wins; otherwise show only when Debbie speaks
+  const showSprite = n.sprite !== undefined ? n.sprite : (n.who ? n.who === 'Debbie' : null);
+  if (showSprite !== null) $('sprite').classList.toggle('hidden', !showSprite);
+  document.body.classList.toggle('narration', !!n.narration);
+  $('nametag').classList.toggle('hidden', !n.who);
+  if (n.who) $('nametag').childNodes[$('nametag').childNodes.length-1].textContent = ' ' + n.who;
+
+  if (n.type === 'say') {
+    hideChoices();
+    typeText(n.text, () => $('next-arrow').classList.add('show'));
+  } else if (n.type === 'choice') {
+    $('nametag').classList.add('hidden');
+    typeText(n.q, () => showChoices(n.options));
+  }
+}
+
+/* ---- back to previous node ---- */
+function back(e) {
+  e.stopPropagation();
+  if (history.length === 0) return;
+  const prev = history.pop();
+  const f = $('fade'); f.classList.add('on');
+  setTimeout(() => { f.classList.remove('on'); show(prev, false); }, 450);
+}
+
+/* ---- advance ---- */
+function advance() {
+  const n = NODES[current];
+  if (n.type !== 'say') return;
+  if (typing) { // click to skip typing
+    clearInterval(typeTimer);
+    $('text').innerHTML = fullText.replace(/\n/g,'<br>');
+    typing = false;
+    $('next-arrow').classList.add('show');
+    return;
+  }
+  const next = FLOW[current];
+  if (next && next.length) show(next[0]);
+  else { // story end → title screen
+    const f = $('fade'); f.classList.add('on');
+    setTimeout(() => location.href = 'index.html', 520);
+  }
+}
+
+/* ---- choices ---- */
+function showChoices(opts) {
+  opts.forEach((o, i) => $('c'+i).textContent = o.label);
+  $('choices').classList.add('show');
+}
+function hideChoices() { $('choices').classList.remove('show'); }
+function pick(i, e) {
+  e.stopPropagation();
+  const target = NODES[current].options[i].goto;
+  const f = $('fade'); f.classList.add('on');
+  setTimeout(() => { f.classList.remove('on'); show(target); }, 480);
+}
+
+/* ---- top bar ---- */
+function restart(e)  { e.stopPropagation(); localStorage.removeItem('save_node');
+  history = []; lastBg = 'day';
+  const f = $('fade'); f.classList.add('on');
+  setTimeout(() => { f.classList.remove('on'); show('start'); }, 480); }
+function backHome(e) { e.stopPropagation(); location.href = 'index.html'; }
+
+/* ---- stage scaling ---- */
+function fit() {
+  const s = Math.min(innerWidth / 1280, innerHeight / 720);
+  $('stage').style.transform = `translate(-50%, -50%) scale(${s})`;
+}
+addEventListener('resize', fit); fit();
+
+/* ---- input ----
+ * clicks on top bar / settings / choices stopPropagation first,
+ * so only bare stage clicks advance the dialogue */
+$('stage').addEventListener('click', advance);
+addEventListener('keydown', ev => {
+  if (ev.code === 'Space' || ev.code === 'Enter') { ev.preventDefault(); advance(); }
+  if (ev.code === 'Backspace') { ev.preventDefault(); back({ stopPropagation(){} }); }
+  if (ev.code === 'Escape') closeSettings();
+});
+
+/* ---- boot (supports ?node=xxx jump for debugging) ---- */
+show(new URLSearchParams(location.search).get('node') || localStorage.getItem('save_node') || 'start');
+</script>
+</body>
+</html>
